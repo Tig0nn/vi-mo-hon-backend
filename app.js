@@ -4,6 +4,7 @@ const logger = require('morgan');
 const cors = require('cors');
 const helmet = require('helmet');
 
+const challengeRouter = require('./src/routes/challenge.routes');
 const dashboardRouter = require('./src/routes/dashboard.routes');
 const expenseRouter = require('./src/routes/expense.routes');
 const healthRouter = require('./src/routes/health.routes');
@@ -24,6 +25,7 @@ app.use(cookieParser());
 app.use('/api/health', healthRouter);
 app.use('/api/profile', profileRouter);
 app.use('/api/expenses', expenseRouter);
+app.use('/api/challenges', challengeRouter);
 app.use('/api/dashboard', dashboardRouter);
 
 // Catch 404 and forward to error handler (Returns JSON)

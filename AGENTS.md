@@ -6,13 +6,14 @@ Guidance for AI agents and contributors working in this repository.
 
 Vi Mo Hon is an Express.js backend for an AI-assisted financial habit coach. The MVP is a behavior-change backend, not a banking app, not a full expense tracker, and not a full game.
 
-The first backend slice is:
+Completed backend slices:
 
 ```text
-health check -> environment config -> mock profile -> quick expense input -> XP progression -> initial boss state -> dashboard
+Slice 1: health check -> environment config -> mock profile -> quick expense input -> XP progression -> initial boss state -> dashboard
+Slice 2: challenge list -> challenge completion -> XP + discipline -> boss HP damage -> dashboard update
 ```
 
-Build this slice before adding the anti-regret coach, reflections, or any challenge completion behavior.
+Supabase persistence, anti-regret coach, reflections, and deeper challenge systems are still future work.
 
 ## Read These First
 
@@ -112,10 +113,11 @@ Recommended order for the next backend work:
 5. XP progression.
 6. Initial boss state.
 7. Dashboard.
-8. Supabase persistence when preparing external demo/testing.
-9. Anti-Regret Coach with rule-based/mock response.
-10. Reflection.
-11. Challenges.
+8. Challenge system.
+9. Supabase persistence when preparing external demo/testing.
+10. Anti-Regret Coach with rule-based/mock response.
+11. Reflection.
+12. Deeper challenge systems.
 
 ## Verification
 
@@ -152,4 +154,4 @@ When Git is usable, prefer small commits:
 - Do not build OCR receipt scanning.
 - Do not build multiplayer/social/leaderboard features.
 - Do not overbuild boss combat; keep it as simple progression feedback.
-- Do not implement challenge completion in the first backend slice.
+- Do not build additional challenge systems beyond the current single mock completion loop yet.

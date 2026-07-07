@@ -18,12 +18,13 @@ const getDashboard = (userId) => {
       displayName: profile.displayName,
       level: profile.level,
       xp: profile.xp,
+      discipline: profile.discipline || 0,
       monthlyBudget: profile.monthlyBudget,
       monthlySpent: mockStore.sumExpensesByUserId(userId),
     },
-    boss: mockStore.getInitialBossState(userId),
+    boss: mockStore.getBossState(userId),
     recentExpenses,
-    activeChallenges: [],
+    activeChallenges: mockStore.listActiveChallenges(userId),
   };
 };
 

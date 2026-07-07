@@ -15,14 +15,16 @@ It is not a normal expense tracker, not a banking app, and not a full game. The 
 
 ## Implementation Scope
 
-Build only the backend MVP vertical slice first:
+Completed backend slices:
 
 ```text
-health check -> environment config -> mock profile -> quick expense input -> XP progression -> initial boss state -> dashboard
+Slice 1: health check -> environment config -> mock profile -> quick expense input -> XP progression -> initial boss state -> dashboard
+Slice 2: challenge list -> challenge completion -> XP + discipline -> boss HP damage -> dashboard update
 ```
 
-After this slice works, add:
+After these slices work, add:
 
+- Supabase persistence for demo testers
 - Anti-Regret Coach
 - Reflection
 
@@ -100,6 +102,8 @@ src/
 - `PATCH /api/profile/:userId`
 - `POST /api/expenses/quick-input`
 - `GET /api/expenses?userId=mock-user`
+- `GET /api/challenges?userId=mock-user`
+- `POST /api/challenges/:challengeId/complete`
 - `GET /api/dashboard/:userId`
 
 Later slices:
@@ -108,10 +112,6 @@ Later slices:
 - `PATCH /api/coach/urges/:urgeId`
 - `POST /api/reflections`
 - `GET /api/reflections?userId=mock-user`
-- `GET /api/challenges?userId=mock-user`
-- `POST /api/challenges/:challengeId/complete`
-
-Challenge completion is not part of the first backend slice.
 
 ## Implementation Order
 
@@ -122,10 +122,11 @@ Challenge completion is not part of the first backend slice.
 5. XP progression
 6. Initial boss state
 7. Dashboard
-8. Supabase persistence for demo testers
-9. Anti-Regret Coach
-10. Reflection
-11. Challenges
+8. Challenge system
+9. Supabase persistence for demo testers
+10. Anti-Regret Coach
+11. Reflection
+12. Deeper challenge systems
 
 ## Implementation Rules
 
@@ -172,5 +173,6 @@ Error:
 - `GET /api/health` returns a valid JSON health response.
 - Mock profile can be created/read/updated.
 - Quick expense input creates an expense and updates user progression.
-- Dashboard returns profile summary, recent expenses, XP state, and initial boss state.
+- Challenge completion updates XP, discipline, boss HP, and active challenge state.
+- Dashboard returns profile summary, recent expenses, XP state, discipline, boss state, and active challenges.
 - API docs match implemented endpoint behavior.

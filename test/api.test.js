@@ -163,7 +163,88 @@ test('dashboard returns profile, recent expenses, XP, and initial boss state', a
     assert.equal(dashboard.body.data.boss.currentHp, 100);
     assert.equal(dashboard.body.data.boss.maxHp, 100);
     assert.equal(dashboard.body.data.recentExpenses.length, 1);
+    assert.equal(dashboard.body.data.activeChallenges.length, 1);
+    assert.equal(dashboard.body.data.activeChallenges[0].id, 'challenge-1');
+  } finally {
+    await server.close();
+  }
+});
+
+test('challenge completion rewards XP, discipline, boss damage, and updates dashboard', async () => {
+  const server = await startServer();
+
+  try {
+    await requestJson(server.baseUrl, '/api/profile', {
+      method: 'POST',
+      body: JSON.stringify({
+        userId: 'mock-user',
+        displayName: 'Minh',
+        monthlyBudget: 3000000,
+        currency: 'VND',
+      }),
+    });
+
+    const challenges = await requestJson(server.baseUrl, '/api/challenges?userId=mock-user');
+    assert.equal(challenges.response.status, 200);
+    assert.equal(challenges.body.data.items.length, 1);
+    assert.equal(challenges.body.data.items[0].id, 'challenge-1');
+    assert.equal(challenges.body.data.items[0].rewardXp, 30);
+    assert.equal(challenges.body.data.items[0].bossDamage, 20);
+    assert.equal(challenges.body.data.items[0].status, 'active');
+
+    const completion = await requestJson(server.baseUrl, '/api/challenges/challenge-1/complete', {
+      method: 'POST',
+      body: JSON.stringify({ userId: 'mock-user' }),
+    });
+
+    assert.equal(completion.response.status, 200);
+    assert.equal(completion.body.data.challenge.id, 'challenge-1');
+    assert.equal(completion.body.data.challenge.status, 'completed');
+    assert.equal(completion.body.data.progression.xpGained, 30);
+    assert.equal(completion.body.data.progression.totalXp, 30);
+    assert.equal(completion.body.data.progression.disciplineGained, 5);
+    assert.equal(completion.body.data.progression.discipline, 5);
+    assert.equal(completion.body.data.boss.currentHp, 80);
+    assert.equal(completion.body.data.boss.maxHp, 100);
+
+    const dashboard = await requestJson(server.baseUrl, '/api/dashboard/mock-user');
+    assert.equal(dashboard.response.status, 200);
+    assert.equal(dashboard.body.data.profile.xp, 30);
+    assert.equal(dashboard.body.data.profile.discipline, 5);
+    assert.equal(dashboard.body.data.boss.currentHp, 80);
     assert.deepEqual(dashboard.body.data.activeChallenges, []);
+  } finally {
+    await server.close();
+  }
+});
+
+test('challenge completion cannot damage boss below zero or complete twice', async () => {
+  const server = await startServer();
+
+  try {
+    await requestJson(server.baseUrl, '/api/profile', {
+      method: 'POST',
+      body: JSON.stringify({
+        userId: 'mock-user',
+        displayName: 'Minh',
+        monthlyBudget: 3000000,
+        currency: 'VND',
+      }),
+    });
+
+    const first = await requestJson(server.baseUrl, '/api/challenges/challenge-1/complete', {
+      method: 'POST',
+      body: JSON.stringify({ userId: 'mock-user' }),
+    });
+    assert.equal(first.response.status, 200);
+
+    const second = await requestJson(server.baseUrl, '/api/challenges/challenge-1/complete', {
+      method: 'POST',
+      body: JSON.stringify({ userId: 'mock-user' }),
+    });
+
+    assert.equal(second.response.status, 409);
+    assert.equal(second.body.success, false);
   } finally {
     await server.close();
   }

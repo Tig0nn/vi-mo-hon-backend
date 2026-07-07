@@ -98,6 +98,7 @@ Response `201`:
     "currency": "VND",
     "level": 1,
     "xp": 0,
+    "discipline": 0,
     "createdAt": "2026-07-07T00:00:00.000Z",
     "updatedAt": "2026-07-07T00:00:00.000Z"
   }
@@ -120,7 +121,8 @@ Response `200`:
     "monthlyBudget": 3000000,
     "currency": "VND",
     "level": 1,
-    "xp": 40
+    "xp": 40,
+    "discipline": 0
   }
 }
 ```
@@ -150,7 +152,8 @@ Response `200`:
     "monthlyBudget": 3500000,
     "currency": "VND",
     "level": 1,
-    "xp": 40
+    "xp": 40,
+    "discipline": 0
   }
 }
 ```
@@ -241,7 +244,7 @@ Response `200`:
 
 ### `GET /api/dashboard/:userId`
 
-Returns the main home/dashboard state for the mobile app. In the first backend slice, boss progress means the initial boss state shown in this dashboard response. Challenge completion is not required yet.
+Returns the main home/dashboard state for the mobile app.
 
 Response `200`:
 
@@ -255,6 +258,7 @@ Response `200`:
       "displayName": "Minh",
       "level": 1,
       "xp": 50,
+      "discipline": 0,
       "monthlyBudget": 3000000,
       "monthlySpent": 55000
     },
@@ -265,7 +269,17 @@ Response `200`:
       "maxHp": 100
     },
     "recentExpenses": [],
-    "activeChallenges": []
+    "activeChallenges": [
+      {
+        "id": "challenge-1",
+        "title": "Không uống trà sữa hôm nay",
+        "description": "Skip bubble tea for today.",
+        "rewardXp": 30,
+        "bossDamage": 20,
+        "difficulty": "easy",
+        "status": "active"
+      }
+    ]
   }
 }
 ```
@@ -370,15 +384,35 @@ Lists reflections for a user.
 
 ## Challenges
 
-Challenge endpoints are planned for a later slice. Do not implement challenge completion in the first backend slice.
-
 ### `GET /api/challenges?userId=mock-user`
 
 Lists active challenges.
 
+Response `200`:
+
+```json
+{
+  "success": true,
+  "message": "Challenges retrieved",
+  "data": {
+    "items": [
+      {
+        "id": "challenge-1",
+        "title": "Không uống trà sữa hôm nay",
+        "description": "Skip bubble tea for today.",
+        "rewardXp": 30,
+        "bossDamage": 20,
+        "difficulty": "easy",
+        "status": "active"
+      }
+    ]
+  }
+}
+```
+
 ### `POST /api/challenges/:challengeId/complete`
 
-Marks a challenge as complete and grants XP.
+Marks a challenge as complete, grants XP, increases discipline, damages the boss, and removes the challenge from the active list.
 
 Request:
 
@@ -395,9 +429,28 @@ Response `200`:
   "success": true,
   "message": "Challenge completed",
   "data": {
-    "challengeId": "challenge_001",
-    "xpGained": 30,
-    "totalXp": 80
+    "challenge": {
+      "id": "challenge-1",
+      "title": "Không uống trà sữa hôm nay",
+      "description": "Skip bubble tea for today.",
+      "rewardXp": 30,
+      "bossDamage": 20,
+      "difficulty": "easy",
+      "status": "completed"
+    },
+    "progression": {
+      "xpGained": 30,
+      "totalXp": 30,
+      "level": 1,
+      "disciplineGained": 5,
+      "discipline": 5
+    },
+    "boss": {
+      "bossId": "impulse-boss",
+      "name": "Impulse Boss",
+      "currentHp": 80,
+      "maxHp": 100
+    }
   }
 }
 ```

@@ -40,6 +40,7 @@ Stores one financial habit profile per user.
 | `currency`        | `text`        | yes      | Default `VND`                                           |
 | `level`           | `integer`     | yes      | Default `1`                                             |
 | `xp`              | `integer`     | yes      | Default `0`                                             |
+| `discipline`      | `integer`     | yes      | Default `0`                                             |
 | `created_at`      | `timestamptz` | yes      | Default `now()`                                         |
 | `updated_at`      | `timestamptz` | yes      | Default `now()`                                         |
 | `main_goal`       | `text`        | no       | Example: save 20,000,000 VND                            |

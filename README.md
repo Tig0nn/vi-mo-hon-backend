@@ -55,6 +55,8 @@ GET /api/profile/:userId
 PATCH /api/profile/:userId
 POST /api/expenses/quick-input
 GET /api/expenses?userId=mock-user&page=1&pageSize=20
+GET /api/challenges?userId=mock-user
+POST /api/challenges/:challengeId/complete
 GET /api/dashboard/:userId
 ```
 
