@@ -1,6 +1,8 @@
 # Database Schema
 
-This document defines the planned Supabase/PostgreSQL schema for the MVP. Use `mock-user` for local development and assigned `test-user-*` IDs for external demo testing until authentication is introduced.
+This document defines the planned Supabase/PostgreSQL schema for the demo MVP. Use `mock-user` for local development and assigned `test-user-*` IDs for external demo testing until authentication is introduced.
+
+The demo MVP stores profile personalization, quick expenses, Anti-Regret Coach urges, challenges, XP/stats, boss progress, and dashboard data. Local reminders remain part of the product demo scope but do not require backend reminder tables yet. Reflection is a future/post-demo feature only and is not required for the current demo schema.
 
 ## Conventions
 
@@ -116,7 +118,7 @@ Stores progression changes as an append-only log.
 | ------------- | ------------- | -------- | ------------------------------------ |
 | `id`          | `uuid`        | yes      | Primary key                          |
 | `user_id`     | `text`        | yes      | Owner                                |
-| `source_type` | `text`        | yes      | `EXPENSE`, `SPENDING_URGE`, `CHALLENGE`, `REFLECTION` |
+| `source_type` | `text`        | yes      | `EXPENSE`, `SPENDING_URGE`, `CHALLENGE` |
 | `source_id`   | `uuid`        | no       | Related entity id                    |
 | `xp_delta`    | `integer`     | yes      | Can be positive or negative later    |
 | `reason`      | `text`        | no       | Short explanation                    |
@@ -125,24 +127,6 @@ Stores progression changes as an append-only log.
 Recommended indexes:
 
 - `(user_id, created_at desc)`
-
-## `reflections`
-
-Stores short post-purchase reflections.
-
-| Column       | Type          | Required | Notes                            |
-| ------------ | ------------- | -------- | -------------------------------- |
-| `id`         | `uuid`        | yes      | Primary key                      |
-| `user_id`    | `text`        | yes      | Owner                            |
-| `expense_id` | `uuid`        | no       | Related expense                  |
-| `mood`       | `text`        | yes      | Example: `REGRET`, `OK`, `PROUD` |
-| `note`       | `text`        | no       | User-written note                |
-| `created_at` | `timestamptz` | yes      | Default `now()`                  |
-
-Recommended indexes:
-
-- `(user_id, created_at desc)`
-- `expense_id`
 
 ## `challenges`
 
@@ -190,3 +174,7 @@ When authentication is added:
 - Add row-level security policies for every user-owned table.
 - Ensure service-role keys are used only from trusted backend environments.
 - Keep frontend clients away from AI provider keys and backend-only secrets.
+
+## Future / Post-demo: Reflections
+
+A future Reflection release may add a `reflections` table for short post-purchase learning notes and may add `REFLECTION` as an `xp_events.source_type`. Do not require those for the current demo MVP.

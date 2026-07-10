@@ -11,6 +11,8 @@ const envSchema = z.object({
   SUPABASE_URL: z.preprocess(emptyStringToUndefined, z.string().url().optional()),
   SUPABASE_ANON_KEY: z.preprocess(emptyStringToUndefined, z.string().min(1).optional()),
   OPENAI_API_KEY: z.preprocess(emptyStringToUndefined, z.string().min(1).optional()),
+  GEMINI_API_KEY: z.preprocess(emptyStringToUndefined, z.string().min(1).optional()),
+  GEMINI_MODEL: z.preprocess(emptyStringToUndefined, z.string().min(1).default('gemini-2.5-flash')),
 });
 
 const formatEnvErrors = (error) =>

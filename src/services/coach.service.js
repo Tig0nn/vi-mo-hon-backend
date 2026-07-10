@@ -1,7 +1,8 @@
 const mockStore = require('../data/mockStore');
 const { createHttpError } = require('../utils/httpError');
+const geminiService = require('./gemini.service');
 
-const GENERAL_TRIGGER = 'general';
+const GENERAL_TRIGGER = 'other';
 
 const normalizeText = (value = '') =>
   String(value)
@@ -22,23 +23,41 @@ const truncate = (value, maxLength) => {
 };
 
 const detectTrigger = (profile, input) => {
+  if (input.trigger) {
+    return input.trigger;
+  }
+
   const haystack = normalizeText(`${input.itemName} ${input.reason}`);
   const profileTrigger = (profile.triggers || []).find((trigger) => haystack.includes(normalizeText(trigger)));
 
   if (profileTrigger) {
-    return profileTrigger;
+    const normalizedProfileTrigger = normalizeText(profileTrigger)
+      .replace(/[^a-z0-9]+/g, '_')
+      .replace(/^_|_$/g, '');
+
+    if (['flash_sale', 'fomo', 'friends', 'emotional', 'self_reward', 'other'].includes(normalizedProfileTrigger)) {
+      return normalizedProfileTrigger;
+    }
   }
 
   if (/(flash|sale|deal|discount|giam gia|shopee|voucher)/.test(haystack)) {
-    return 'flash sale';
+    return 'flash_sale';
   }
 
   if (/(stress|cang thang|chan|buon|met)/.test(haystack)) {
-    return 'stress';
+    return 'emotional';
+  }
+
+  if (/(tu thuong|self reward|reward|thuong ban than)/.test(haystack)) {
+    return 'self_reward';
   }
 
   if (/(ban be|ru|trend|fomo|so lo)/.test(haystack)) {
-    return 'FOMO';
+    if (/(ban be|ru)/.test(haystack)) {
+      return 'friends';
+    }
+
+    return 'fomo';
   }
 
   return GENERAL_TRIGGER;
@@ -48,15 +67,15 @@ const chooseSuggestedAction = (profile, input, detectedTrigger) => {
   const trigger = normalizeText(detectedTrigger);
   const budgetShare = profile.monthlyBudget > 0 ? input.amount / profile.monthlyBudget : 0;
 
-  if (trigger.includes('sale') || trigger.includes('shopee') || budgetShare >= 0.1) {
+  if (trigger.includes('flash_sale') || trigger.includes('sale') || trigger.includes('shopee') || budgetShare >= 0.1) {
     return 'WAIT_24_HOURS';
   }
 
-  if (trigger.includes('stress')) {
+  if (trigger.includes('emotional')) {
     return 'TAKE_10_MIN_BREATHER';
   }
 
-  if (trigger.includes('fomo') || trigger.includes('ban be')) {
+  if (trigger.includes('fomo') || trigger.includes('friends')) {
     return 'ASK_IF_YOU_STILL_WANT_IT_TOMORROW';
   }
 
@@ -92,7 +111,49 @@ const buildCoachMessage = (profile, input, detectedTrigger, suggestedAction) => 
   return `Khoan chốt ${itemName}. Đợi 24h, so với goal "${goal}", rồi quyết nha.`;
 };
 
-const createAntiRegretResponse = (input) => {
+const buildRecentSpendingSummary = (userId) => {
+  const recentExpenses = mockStore.listExpensesByUserId(userId, { page: 1, pageSize: 3 });
+  const totalSpent = mockStore.sumExpensesByUserId(userId);
+
+  if (recentExpenses.items.length === 0) {
+    return 'No recent spending recorded.';
+  }
+
+  const items = recentExpenses.items
+    .map((expense) => {
+      const category = expense.category || 'uncategorized';
+      return `${category}: ${formatVnd(expense.amount)}`;
+    })
+    .join('; ');
+
+  return `Total recorded spending: ${formatVnd(totalSpent)}. Recent expenses: ${items}.`;
+};
+
+const listRecentExpenseContext = (userId) =>
+  mockStore.listExpensesByUserId(userId, { page: 1, pageSize: 5 }).items.map((expense) => ({
+    amount: expense.amount,
+    category: expense.category || 'uncategorized',
+    occurredAt: expense.occurredAt,
+    text: expense.text || null,
+  }));
+
+const buildRecentExpenseSummaryForChat = (recentExpenses) => {
+  if (!recentExpenses.length) {
+    return 'No recent spending recorded.';
+  }
+
+  return recentExpenses
+    .map((expense) => `${expense.category}: ${formatVnd(expense.amount)}`)
+    .join('; ');
+};
+
+const getSafeGeminiErrorDetails = (error) => ({
+  name: error && error.name ? error.name : 'Error',
+  status: error && error.status ? error.status : undefined,
+  code: error && error.code ? error.code : undefined,
+});
+
+const createAntiRegretResponse = async (input, options = {}) => {
   const profile = mockStore.findProfileByUserId(input.userId);
   if (!profile) {
     throw createHttpError(404, 'Profile not found');
@@ -100,21 +161,82 @@ const createAntiRegretResponse = (input) => {
 
   const detectedTrigger = detectTrigger(profile, input);
   const suggestedAction = chooseSuggestedAction(profile, input, detectedTrigger);
-  const coachMessage = buildCoachMessage(profile, input, detectedTrigger, suggestedAction);
   const urge = mockStore.createSpendingUrge({
     ...input,
     detectedTrigger,
     suggestedAction,
   });
+  const fallbackCoachMessage = buildCoachMessage(profile, input, detectedTrigger, suggestedAction);
+  const generateCoachMessage =
+    options.generateCoachMessage || geminiService.generateAntiRegretCoachMessage;
+
+  let coachMessage = fallbackCoachMessage;
+  let providerUsed = 'fallback';
+  try {
+    const generatedMessage = await generateCoachMessage({
+      mainGoal: profile.mainGoal,
+      triggers: profile.triggers || [],
+      preferredTone: profile.preferredTone,
+      itemName: input.itemName,
+      amount: input.amount,
+      reason: input.reason,
+      detectedTrigger,
+      suggestedAction,
+      recentSpendingSummary: buildRecentSpendingSummary(input.userId),
+    });
+
+    if (generatedMessage) {
+      coachMessage = generatedMessage;
+      providerUsed = 'gemini';
+    }
+  } catch (error) {
+    const message = error && error.message ? error.message : 'Unknown Gemini error';
+    console.warn(`[Gemini] failed: ${message}`, getSafeGeminiErrorDetails(error));
+  }
+
+  mockStore.updateSpendingUrgeCoachMessage(urge.id, coachMessage);
 
   return {
     urgeId: urge.id,
     coachMessage,
     suggestedAction,
     detectedTrigger,
+    providerUsed,
+  };
+};
+
+const createChatResponse = async (input, options = {}) => {
+  const profile = mockStore.findProfileByUserId(input.userId);
+  if (!profile) {
+    throw createHttpError(404, 'Profile not found');
+  }
+
+  const monthlySpent = mockStore.sumExpensesByUserId(input.userId);
+  const recentExpenses = listRecentExpenseContext(input.userId);
+  const generateChatReply = options.generateChatReply || geminiService.generateCoachChatReply;
+
+  const generatedReply = await generateChatReply({
+    userMessage: input.message,
+    mainGoal: profile.mainGoal,
+    triggers: profile.triggers || [],
+    preferredTone: profile.preferredTone,
+    monthlyBudget: profile.monthlyBudget,
+    monthlySpent,
+    recentExpenses,
+    recentSpendingSummary: buildRecentExpenseSummaryForChat(recentExpenses),
+  });
+
+  return {
+    reply: generatedReply.reply,
+    suggestedQuestions: generatedReply.suggestedQuestions,
+    providerUsed: 'gemini',
+    retryCount: generatedReply.retryCount || 0,
   };
 };
 
 module.exports = {
+  buildCoachMessage,
+  createChatResponse,
   createAntiRegretResponse,
+  detectTrigger,
 };

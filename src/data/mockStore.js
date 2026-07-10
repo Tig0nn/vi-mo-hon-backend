@@ -149,6 +149,7 @@ const createSpendingUrge = (input) => {
     reason: input.reason,
     detectedTrigger: input.detectedTrigger,
     suggestedAction: input.suggestedAction,
+    coachMessage: input.coachMessage || null,
     status: 'PENDING',
     createdAt: timestamp,
     updatedAt: timestamp,
@@ -156,6 +157,27 @@ const createSpendingUrge = (input) => {
 
   state.spendingUrges.push(urge);
   return clone(urge);
+};
+
+const findSpendingUrgeById = (urgeId) => {
+  const urge = state.spendingUrges.find((item) => item.id === urgeId);
+  return urge ? clone(urge) : null;
+};
+
+const updateSpendingUrgeCoachMessage = (urgeId, coachMessage) => {
+  const index = state.spendingUrges.findIndex((urge) => urge.id === urgeId);
+  if (index === -1) {
+    return null;
+  }
+
+  const updated = {
+    ...state.spendingUrges[index],
+    coachMessage,
+    updatedAt: new Date().toISOString(),
+  };
+
+  state.spendingUrges[index] = updated;
+  return clone(updated);
 };
 
 const listExpensesByUserId = (userId, { page = 1, pageSize = 20 } = {}) => {
@@ -276,10 +298,12 @@ module.exports = {
   damageBoss,
   findChallengeById,
   findProfileByUserId,
+  findSpendingUrgeById,
   getBossState,
   listActiveChallenges,
   listExpensesByUserId,
   resetMockData,
   sumExpensesByUserId,
   updateProfile,
+  updateSpendingUrgeCoachMessage,
 };

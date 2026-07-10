@@ -11,7 +11,7 @@ It is not a normal expense tracker, not a banking app, and not a full game. The 
 - Backend: Express.js
 - Database: Supabase/PostgreSQL
 - API style: REST API
-- AI integration: AI APIs must be called from the backend only. The frontend must not call AI providers directly.
+- AI integration: AI APIs must be called from the backend only. The frontend must not call AI providers, including Gemini, directly.
 
 ## Implementation Scope
 
@@ -22,11 +22,23 @@ Slice 1: health check -> environment config -> mock profile -> quick expense inp
 Slice 2: challenge list -> challenge completion -> XP + discipline -> boss HP damage -> dashboard update
 ```
 
-After these slices work, add:
+The demo MVP now focuses on:
+
+- Quick expense input
+- AI Anti-Regret Coach
+- Profile personalization
+- Local reminders
+- Challenges
+- XP/stats
+- Boss progress
+- Dashboard
+
+Before the external demo, add:
 
 - Supabase persistence for demo testers
 - Anti-Regret Coach
-- Reflection
+
+Reflection is not part of the demo MVP. Do not implement a Reflection screen, Reflection API, recent reflections, or reflection reward for the demo.
 
 ## Demo Strategy
 
@@ -52,6 +64,7 @@ Each tester should use one assigned test user ID.
 - Multiplayer boss or complex game combat
 - Payment subscription
 - OCR receipt scanner or advanced AI prediction
+- Post-purchase Reflection workflows
 
 ## Project Structure
 
@@ -80,15 +93,15 @@ vi-mo-hon-backend/
 +-- .env.example
 ```
 
-Planned structure as the MVP grows:
+Planned structure as the demo MVP grows:
 
 ```text
 src/
 +-- config/        # env.js, supabase.js
-+-- controllers/   # health, profile, expense, coach, reflection, challenge, dashboard
++-- controllers/   # health, profile, expense, coach, challenge, dashboard
 +-- data/          # mock repositories first, Supabase repositories later
 +-- middlewares/   # error.middleware.js, notFound.middleware.js
-+-- routes/        # health, profile, expense, coach, reflection, challenge, dashboard
++-- routes/        # health, profile, expense, coach, challenge, dashboard
 +-- services/      # expense, progression, boss, coach, dashboard
 +-- validators/    # expense, coach, profile
 +-- utils/         # parseMoneyText.js, response.js
@@ -104,12 +117,12 @@ src/
 - `GET /api/expenses?userId=mock-user`
 - `GET /api/challenges?userId=mock-user`
 - `POST /api/challenges/:challengeId/complete`
-- `GET /api/dashboard/:userId`
-
-Later slices:
-
 - `POST /api/coach/anti-regret`
 - `PATCH /api/coach/urges/:urgeId`
+- `GET /api/dashboard/:userId`
+
+Future / Post-demo:
+
 - `POST /api/reflections`
 - `GET /api/reflections?userId=mock-user`
 
@@ -125,7 +138,7 @@ Later slices:
 8. Challenge system
 9. Supabase persistence for demo testers
 10. Anti-Regret Coach
-11. Reflection
+11. Local reminders
 12. Deeper challenge systems
 
 ## Implementation Rules
@@ -134,7 +147,7 @@ Later slices:
 2. Keep code modular: routes -> controllers -> services.
 3. Use centralized response helpers.
 4. Add error middleware and not-found middleware early.
-5. Keep AI Coach mock/rule-based first if AI key is not ready.
+5. Keep the rule-based Anti-Regret Coach fallback if Gemini is not configured or fails.
 6. Do not let frontend call AI directly.
 7. Avoid over-engineering the game system. Boss is only a gamification layer, not complex combat.
 8. Prioritize working backend APIs over business strategy or full product design.
@@ -174,5 +187,10 @@ Error:
 - Mock profile can be created/read/updated.
 - Quick expense input creates an expense and updates user progression.
 - Challenge completion updates XP, discipline, boss HP, and active challenge state.
+- Anti-Regret Coach returns profile-aware spending guidance for the demo behavior-change loop.
 - Dashboard returns profile summary, recent expenses, XP state, discipline, boss state, and active challenges.
 - API docs match implemented endpoint behavior.
+
+## Future / Post-demo
+
+Reflection can return after the demo as a post-purchase learning feature. It may include a Reflection screen, Reflection API, recent reflections, and reflection rewards, but none of those belong in the current demo MVP.

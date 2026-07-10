@@ -1,6 +1,6 @@
 # Vi Mo Hon Backend
 
-Express.js backend for the Vi Mo Hon MVP, an AI-assisted financial habit coach for young Vietnamese users. The backend focuses on behavior-change workflows first: profile, quick expense input, XP progression, initial boss state in the dashboard, and later anti-regret coaching/reflection.
+Express.js backend for the Vi Mo Hon demo MVP, an AI-assisted financial habit coach for young Vietnamese users. The backend focuses on behavior-change workflows first: profile personalization, quick expense input, AI Anti-Regret Coach, local reminders, challenges, XP/stats, boss progress, and dashboard.
 
 ## Tech Stack
 
@@ -8,7 +8,7 @@ Express.js backend for the Vi Mo Hon MVP, an AI-assisted financial habit coach f
 - Express.js
 - Supabase/PostgreSQL
 - Zod for request validation
-- OpenAI API through backend-only integration
+- Gemini API through backend-only integration
 
 ## Getting Started
 
@@ -44,7 +44,9 @@ npm start
 
 The default server port is `3000`.
 
-Environment variables are loaded and validated from `src/config/env.js`. `PORT` and `NODE_ENV` have safe defaults; Supabase and OpenAI keys can stay empty until those integration slices are implemented.
+Environment variables are loaded and validated from `src/config/env.js`. `PORT`, `NODE_ENV`, and `GEMINI_MODEL` have safe defaults; Supabase, OpenAI, and Gemini keys can stay empty until those integration slices are used. If `GEMINI_API_KEY` is missing, the Anti-Regret Coach uses the rule-based fallback. Coach chat requires Gemini and returns an AI error instead of a fake response when Gemini is unavailable or returns invalid output.
+
+In non-production environments, Anti-Regret Coach responses include `debug.provider` as either `gemini` or `fallback` so local testing can confirm which path generated the message. The API key is never returned.
 
 ## Current Endpoints
 
@@ -57,6 +59,8 @@ POST /api/expenses/quick-input
 GET /api/expenses?userId=mock-user&page=1&pageSize=20
 GET /api/challenges?userId=mock-user
 POST /api/challenges/:challengeId/complete
+POST /api/coach/anti-regret
+POST /api/coach/chat
 GET /api/dashboard/:userId
 ```
 
@@ -101,7 +105,8 @@ vi-mo-hon-backend/
 Planned additions for later slices:
 
 - `src/config/supabase.js` for Supabase persistence
-- Coach, reflection, and challenge modules
+- Anti-Regret Coach and challenge modules
+- Reflection as a future/post-demo module
 
 ## Documentation
 
@@ -112,6 +117,7 @@ Planned additions for later slices:
 ## Implementation Notes
 
 - Keep AI calls on the backend only.
+- The frontend must never call Gemini directly.
 - Use `mock-user` for local development and assigned `test-user-*` IDs for external demo testing.
 - Keep route handlers thin: routes -> controllers -> services.
 - Keep mock data isolated in `src/data/`.

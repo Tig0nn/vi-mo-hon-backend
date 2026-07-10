@@ -1,6 +1,8 @@
 # API Contract
 
-This document defines the MVP REST contract. Keep this file updated whenever endpoint behavior changes.
+This document defines the demo MVP REST contract. Keep this file updated whenever endpoint behavior changes.
+
+The current demo API focuses on quick expense input, AI Anti-Regret Coach, profile personalization, local reminders, challenges, XP/stats, boss progress, and dashboard. Reflection is a future/post-demo feature only. AI provider calls are backend-only; clients must never call Gemini directly or receive provider secrets.
 
 ## Demo User IDs
 
@@ -80,7 +82,10 @@ Request:
   "userId": "mock-user",
   "displayName": "Minh",
   "monthlyBudget": 3000000,
-  "currency": "VND"
+  "currency": "VND",
+  "mainGoal": "Tiết kiệm 20 triệu",
+  "triggers": ["trà sữa", "flash sale", "shopee"],
+  "preferredTone": "funny"
 }
 ```
 
@@ -99,6 +104,9 @@ Response `201`:
     "level": 1,
     "xp": 0,
     "discipline": 0,
+    "mainGoal": "Tiết kiệm 20 triệu",
+    "triggers": ["trà sữa", "flash sale", "shopee"],
+    "preferredTone": "funny",
     "createdAt": "2026-07-07T00:00:00.000Z",
     "updatedAt": "2026-07-07T00:00:00.000Z"
   }
@@ -122,7 +130,10 @@ Response `200`:
     "currency": "VND",
     "level": 1,
     "xp": 40,
-    "discipline": 0
+    "discipline": 0,
+    "mainGoal": "Tiết kiệm 20 triệu",
+    "triggers": ["trà sữa", "flash sale", "shopee"],
+    "preferredTone": "funny"
   }
 }
 ```
@@ -136,7 +147,10 @@ Request:
 ```json
 {
   "displayName": "Minh Anh",
-  "monthlyBudget": 3500000
+  "monthlyBudget": 3500000,
+  "mainGoal": "Mua laptop không nợ",
+  "triggers": ["stress", "sale"],
+  "preferredTone": "strict-but-kind"
 }
 ```
 
@@ -153,7 +167,10 @@ Response `200`:
     "currency": "VND",
     "level": 1,
     "xp": 40,
-    "discipline": 0
+    "discipline": 0,
+    "mainGoal": "Mua laptop không nợ",
+    "triggers": ["stress", "sale"],
+    "preferredTone": "strict-but-kind"
   }
 }
 ```
@@ -244,7 +261,7 @@ Response `200`:
 
 ### `GET /api/dashboard/:userId`
 
-Returns the main home/dashboard state for the mobile app.
+Returns the main home/dashboard state for the mobile app. The demo dashboard does not include recent reflections.
 
 Response `200`:
 
@@ -260,7 +277,10 @@ Response `200`:
       "xp": 50,
       "discipline": 0,
       "monthlyBudget": 3000000,
-      "monthlySpent": 55000
+      "monthlySpent": 55000,
+      "mainGoal": "Tiết kiệm 20 triệu",
+      "triggers": ["trà sữa", "flash sale", "shopee"],
+      "preferredTone": "funny"
     },
     "boss": {
       "bossId": "impulse-boss",
@@ -288,19 +308,33 @@ Response `200`:
 
 ### `POST /api/coach/anti-regret`
 
-Creates a spending urge and returns a short coaching response before or after a purchase. Start rule-based; switch to AI only after the flow works.
+Creates a mock spending urge and returns a short Vietnamese coaching response before or after a purchase. When `GEMINI_API_KEY` is configured, the backend uses Gemini to generate `coachMessage`; otherwise, or if Gemini fails, it returns the rule-based fallback.
 
 Request:
 
 ```json
 {
   "userId": "mock-user",
-  "itemName": "new headphones",
+  "itemName": "tai nghe mới",
   "amount": 1200000,
-  "reason": "I saw a discount",
+  "trigger": "flash_sale",
+  "reason": "Mình thấy flash sale nên hơi muốn chốt đơn",
   "mode": "BEFORE_PURCHASE"
 }
 ```
+
+Rules:
+
+- `userId`, `itemName`, `amount`, and `reason` are required.
+- `amount` must be a positive integer VND amount.
+- `trigger` is optional. Valid values are `flash_sale`, `fomo`, `friends`, `emotional`, `self_reward`, and `other`.
+- If `trigger` is provided, the API uses it as `detectedTrigger`.
+- `mode` is optional and can be `BEFORE_PURCHASE` or `AFTER_PURCHASE`.
+- The user profile must already exist so the response can use `mainGoal`, `triggers`, and `preferredTone`.
+- If `trigger` is omitted, `detectedTrigger` is selected from matching profile triggers first, then simple fallback rules such as `flash_sale`, `emotional`, `fomo`, `friends`, `self_reward`, or `other`.
+- Gemini prompts include the user's `mainGoal`, `triggers`, `preferredTone`, item details, detected trigger, suggested action, and recent spending summary when available.
+- Gemini errors are logged server-side without exposing API keys or provider internals. If the fallback succeeds, the endpoint still returns `200`.
+- Non-production responses include `debug.provider` with `gemini` or `fallback`. Production responses omit `debug`.
 
 Response `200`:
 
@@ -310,9 +344,98 @@ Response `200`:
   "message": "Coach response generated",
   "data": {
     "urgeId": "urge_001",
-    "riskLevel": "MEDIUM",
-    "coachMessage": "Wait 24 hours and compare this purchase with your monthly goal.",
-    "suggestedAction": "WAIT_24_HOURS"
+    "coachMessage": "Deal có vẻ thơm, nhưng trigger \"flash sale\" đang kéo bạn đó. Đợi 24h rồi chốt tai nghe mới; 1.200.000đ nên phục vụ goal \"Tiết kiệm 20 triệu\" nha.",
+    "suggestedAction": "WAIT_24_HOURS",
+    "detectedTrigger": "flash_sale"
+  },
+  "debug": {
+    "provider": "gemini"
+  }
+}
+```
+
+### `POST /api/coach/chat`
+
+Returns a short Vietnamese chat reply for the Coach tab. This endpoint is backend-only for AI provider calls: the mobile client sends the user message to the backend, and only the backend may call Gemini. This endpoint does not use rule-based or deterministic fallback replies. If Gemini is unavailable or returns invalid output after one retry, the backend returns an AI error.
+
+Request:
+
+```json
+{
+  "userId": "mock-user",
+  "message": "Tôi muốn mua đồng hồ 1 triệu vì đang sale, có nên mua không?"
+}
+```
+
+Rules:
+
+- `userId` and `message` are required.
+- `message` must be non-empty and at most 500 characters.
+- The user profile must already exist so the response can use `mainGoal`, `triggers`, `preferredTone`, `monthlyBudget`, and current monthly spending.
+- Gemini prompts include recent expenses when available.
+- Gemini must return valid JSON only with `reply` and exactly 3 `suggestedQuestions`.
+- Replies must be Vietnamese only, helpful, non-shaming, and 2-4 complete sentences.
+- Replies must be at least 120 characters.
+- Replies must contain at least 2 complete sentences and must not end with unfinished fragments.
+- Replies must not mention Gemini, mock data, system prompts, or internal logic.
+- Short reaction fragments such as `"U là trời, đồng hồ"` are rejected.
+- The coach does not provide legal, investment, or medical advice.
+- Purchase questions should help the user pause and compare the purchase with their goal.
+- General finance questions should be answered simply and practically.
+- If the first Gemini output is invalid, the backend retries once with a repair prompt.
+- Successful responses include `debug.provider` with `gemini` and `debug.retryCount`.
+- Invalid Gemini output returns `502` with `error.code = "AI_RESPONSE_INVALID"`.
+- Gemini provider failures return `502` or `503` with `error.code = "AI_PROVIDER_ERROR"`.
+
+Response `200`:
+
+```json
+{
+  "success": true,
+  "message": "Coach chat response generated",
+  "data": {
+    "reply": "Đồng hồ 1 triệu là khoản không nhỏ, nhất là nếu bạn đang có mục tiêu tiết kiệm. Nếu lý do chính là sale, hãy chờ 24 giờ rồi xem bạn còn muốn mua không. Nếu vẫn muốn mua, đặt trước một mức giá tối đa để tránh chốt vì cảm xúc.",
+    "suggestedQuestions": [
+      "Nếu không mua món này thì tôi tiết kiệm được bao nhiêu?",
+      "Có lựa chọn nào rẻ hơn không?",
+      "Món này có thật sự cần trong tuần này không?"
+    ]
+  },
+  "debug": {
+    "provider": "gemini",
+    "retryCount": 0
+  }
+}
+```
+
+Invalid Gemini output response `502`:
+
+```json
+{
+  "success": false,
+  "message": "Coach chưa trả lời ổn định, thử lại nha.",
+  "error": {
+    "code": "AI_RESPONSE_INVALID"
+  },
+  "debug": {
+    "provider": "gemini",
+    "retryCount": 1,
+    "reason": "invalid_short_reply"
+  }
+}
+```
+
+Gemini provider error response `502` or `503`:
+
+```json
+{
+  "success": false,
+  "message": "Coach đang hơi lag, thử lại sau nha.",
+  "error": {
+    "code": "AI_PROVIDER_ERROR"
+  },
+  "debug": {
+    "provider": "gemini"
   }
 }
 ```
@@ -343,44 +466,6 @@ Response `200`:
   }
 }
 ```
-
-## Reflections
-
-### `POST /api/reflections`
-
-Creates a short post-purchase reflection.
-
-Request:
-
-```json
-{
-  "userId": "mock-user",
-  "expenseId": "expense_001",
-  "mood": "REGRET",
-  "note": "I bought it too quickly."
-}
-```
-
-Response `201`:
-
-```json
-{
-  "success": true,
-  "message": "Reflection created",
-  "data": {
-    "id": "reflection_001",
-    "userId": "mock-user",
-    "expenseId": "expense_001",
-    "mood": "REGRET",
-    "note": "I bought it too quickly.",
-    "createdAt": "2026-07-07T00:00:00.000Z"
-  }
-}
-```
-
-### `GET /api/reflections?userId=mock-user&page=1&pageSize=20`
-
-Lists reflections for a user.
 
 ## Challenges
 
@@ -454,3 +539,7 @@ Response `200`:
   }
 }
 ```
+
+## Future / Post-demo: Reflections
+
+Reflection is not part of the current demo API. Do not implement `POST /api/reflections`, `GET /api/reflections`, recent reflection dashboard data, or reflection XP rewards for the demo.

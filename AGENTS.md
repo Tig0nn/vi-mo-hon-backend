@@ -13,7 +13,7 @@ Slice 1: health check -> environment config -> mock profile -> quick expense inp
 Slice 2: challenge list -> challenge completion -> XP + discipline -> boss HP damage -> dashboard update
 ```
 
-Supabase persistence, anti-regret coach, reflections, and deeper challenge systems are still future work.
+Supabase persistence, anti-regret coach, local reminders, and deeper challenge systems are still future work. Reflection is future/post-demo only and should not be implemented for the current demo MVP.
 
 ## Read These First
 
@@ -33,7 +33,8 @@ If endpoint behavior changes, update `docs/API_CONTRACT.md` in the same change. 
 - CommonJS modules
 - Supabase/PostgreSQL planned for persistence
 - Zod planned for request validation
-- OpenAI API planned for backend-only AI flows
+- Gemini API for backend-only Anti-Regret Coach generation
+- OpenAI API may be used for future backend-only AI flows
 
 ## Code Organization
 
@@ -93,7 +94,8 @@ Supabase persistence is planned but should not be implemented until the mock ver
 
 - The frontend must never call AI providers directly.
 - AI provider keys belong only in backend environment variables.
-- Start with rule-based/mock coach logic if `OPENAI_API_KEY` is not ready.
+- Use Gemini for Anti-Regret Coach only from the backend when `GEMINI_API_KEY` is configured.
+- Keep rule-based/mock coach logic as the fallback if `GEMINI_API_KEY` is not ready or Gemini fails.
 - Treat third-party AI responses as untrusted data before using them in logic.
 
 ## Environment
@@ -116,7 +118,7 @@ Recommended order for the next backend work:
 8. Challenge system.
 9. Supabase persistence when preparing external demo/testing.
 10. Anti-Regret Coach with rule-based/mock response.
-11. Reflection.
+11. Local reminders.
 12. Deeper challenge systems.
 
 ## Verification
@@ -155,3 +157,4 @@ When Git is usable, prefer small commits:
 - Do not build multiplayer/social/leaderboard features.
 - Do not overbuild boss combat; keep it as simple progression feedback.
 - Do not build additional challenge systems beyond the current single mock completion loop yet.
+- Do not build Reflection screen, Reflection API, recent reflections, or reflection rewards for the demo MVP.
