@@ -216,7 +216,7 @@ ${input.userMessage}
 
 const buildChatCoachRepairPrompt = (input, previousReason) =>
   `
-Your previous output was rejected because it was too short, incomplete, or sounded like a reaction fragment.
+Your previous output was invalid because it was too short, incomplete, or sounded like a reaction fragment.
 
 Validation reason: ${previousReason || "invalid_short_reply"}
 
@@ -410,6 +410,38 @@ const generateCoachChatReply = async (input, options = {}) => {
     return normalizeCoachChatPayload(payload, 0);
   } catch (error) {
     if (error.code === "AI_RESPONSE_INVALID") {
+      const reason =
+        error.debug && error.debug.reason
+          ? error.debug.reason
+          : "invalid_response";
+
+      try {
+        const repairedPayload = await requestChatCoachJson(
+          client,
+          model,
+          buildChatCoachRepairPrompt(input, reason),
+        );
+
+        return normalizeCoachChatPayload(repairedPayload, 1);
+      } catch (repairError) {
+        if (repairError.code === "AI_RESPONSE_INVALID") {
+          throw createAiError(
+            "AI_RESPONSE_INVALID",
+            "Coach chÆ°a tráº£ lá»i á»•n Ä‘á»‹nh, thá»­ láº¡i nha.",
+            502,
+            {
+              retryCount: 1,
+              reason:
+                repairError.debug && repairError.debug.reason
+                  ? repairError.debug.reason
+                  : reason,
+            },
+          );
+        }
+
+        throw repairError;
+      }
+
       throw createAiError(
         "AI_RESPONSE_INVALID",
         "Coach chưa trả lời ổn định, thử lại nha.",

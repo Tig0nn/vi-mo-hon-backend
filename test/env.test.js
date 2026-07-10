@@ -10,6 +10,8 @@ test('validateEnv returns defaults when optional values are missing', () => {
   assert.equal(env.PORT, 3000);
   assert.equal(env.SUPABASE_URL, undefined);
   assert.equal(env.SUPABASE_ANON_KEY, undefined);
+  assert.equal(env.SUPABASE_SECRET_KEY, undefined);
+  assert.equal(env.SUPABASE_SERVICE_ROLE_KEY, undefined);
   assert.equal(env.OPENAI_API_KEY, undefined);
   assert.equal(env.GEMINI_API_KEY, undefined);
   assert.equal(env.GEMINI_MODEL, 'gemini-2.5-flash');
@@ -19,6 +21,8 @@ test('validateEnv treats empty optional secrets as unset', () => {
   const env = validateEnv({
     SUPABASE_URL: '',
     SUPABASE_ANON_KEY: '',
+    SUPABASE_SECRET_KEY: '',
+    SUPABASE_SERVICE_ROLE_KEY: '',
     OPENAI_API_KEY: '',
     GEMINI_API_KEY: '',
     GEMINI_MODEL: '',
@@ -26,6 +30,8 @@ test('validateEnv treats empty optional secrets as unset', () => {
 
   assert.equal(env.SUPABASE_URL, undefined);
   assert.equal(env.SUPABASE_ANON_KEY, undefined);
+  assert.equal(env.SUPABASE_SECRET_KEY, undefined);
+  assert.equal(env.SUPABASE_SERVICE_ROLE_KEY, undefined);
   assert.equal(env.OPENAI_API_KEY, undefined);
   assert.equal(env.GEMINI_API_KEY, undefined);
   assert.equal(env.GEMINI_MODEL, 'gemini-2.5-flash');

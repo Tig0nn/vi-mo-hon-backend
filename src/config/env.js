@@ -1,7 +1,10 @@
 const dotenv = require('dotenv');
 const { z } = require('zod');
 
-dotenv.config({ quiet: true });
+dotenv.config({
+  quiet: true,
+  override: !['test', 'production'].includes(process.env.NODE_ENV),
+});
 
 const emptyStringToUndefined = (value) => (value === '' ? undefined : value);
 
@@ -10,6 +13,8 @@ const envSchema = z.object({
   PORT: z.coerce.number().int().positive().max(65535).default(3000),
   SUPABASE_URL: z.preprocess(emptyStringToUndefined, z.string().url().optional()),
   SUPABASE_ANON_KEY: z.preprocess(emptyStringToUndefined, z.string().min(1).optional()),
+  SUPABASE_SECRET_KEY: z.preprocess(emptyStringToUndefined, z.string().min(1).optional()),
+  SUPABASE_SERVICE_ROLE_KEY: z.preprocess(emptyStringToUndefined, z.string().min(1).optional()),
   OPENAI_API_KEY: z.preprocess(emptyStringToUndefined, z.string().min(1).optional()),
   GEMINI_API_KEY: z.preprocess(emptyStringToUndefined, z.string().min(1).optional()),
   GEMINI_MODEL: z.preprocess(emptyStringToUndefined, z.string().min(1).default('gemini-2.5-flash')),

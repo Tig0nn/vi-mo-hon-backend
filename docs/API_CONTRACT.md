@@ -42,7 +42,7 @@ Error:
 
 ## Error Semantics
 
-- `400 Bad Request`: malformed input or missing required query params
+- `400 Bad Request`: malformed input, validation failure, or missing required query params
 - `404 Not Found`: resource does not exist
 - `409 Conflict`: duplicate or state conflict
 - `422 Unprocessable Entity`: valid JSON but semantically invalid fields
@@ -73,7 +73,7 @@ Response `200`:
 
 ### `POST /api/profile`
 
-Creates a mock user profile. Use this before authentication exists.
+Creates or updates a Supabase-backed user profile before authentication exists. The backend also ensures a `user_progress` row exists without resetting existing progress.
 
 Request:
 
@@ -83,11 +83,21 @@ Request:
   "displayName": "Minh",
   "monthlyBudget": 3000000,
   "currency": "VND",
-  "mainGoal": "Tiết kiệm 20 triệu",
-  "triggers": ["trà sữa", "flash sale", "shopee"],
+  "mainGoal": "save_money",
+  "targetAmount": 20000000,
+  "targetDate": null,
+  "triggers": ["flash_sale", "social_media"],
   "preferredTone": "funny"
 }
 ```
+
+Rules:
+
+- `userId`, `displayName`, and `mainGoal` are required non-empty strings.
+- `monthlyBudget` and `targetAmount` must be non-negative integer VND amounts or `null`.
+- `targetDate` must be a valid date string or `null`.
+- `triggers` must be an array of strings.
+- `preferredTone` defaults to `funny` and must be one of `gentle`, `funny`, `sarcastic-light`, or `strict-but-kind`.
 
 Response `201`:
 
@@ -96,7 +106,7 @@ Response `201`:
   "success": true,
   "message": "Profile created",
   "data": {
-    "id": "profile_001",
+    "id": "6f6a8f0c-6e6c-4f0f-8e1a-9d5a8d2a9a11",
     "userId": "mock-user",
     "displayName": "Minh",
     "monthlyBudget": 3000000,
@@ -104,8 +114,10 @@ Response `201`:
     "level": 1,
     "xp": 0,
     "discipline": 0,
-    "mainGoal": "Tiết kiệm 20 triệu",
-    "triggers": ["trà sữa", "flash sale", "shopee"],
+    "mainGoal": "save_money",
+    "targetAmount": 20000000,
+    "targetDate": null,
+    "triggers": ["flash_sale", "social_media"],
     "preferredTone": "funny",
     "createdAt": "2026-07-07T00:00:00.000Z",
     "updatedAt": "2026-07-07T00:00:00.000Z"
@@ -115,7 +127,7 @@ Response `201`:
 
 ### `GET /api/profile/:userId`
 
-Returns one profile by user id.
+Returns one Supabase-backed profile by user id. Missing profiles return `404`; this endpoint does not silently fall back to mock profile data.
 
 Response `200`:
 
@@ -131,8 +143,10 @@ Response `200`:
     "level": 1,
     "xp": 40,
     "discipline": 0,
-    "mainGoal": "Tiết kiệm 20 triệu",
-    "triggers": ["trà sữa", "flash sale", "shopee"],
+    "mainGoal": "save_money",
+    "targetAmount": 20000000,
+    "targetDate": null,
+    "triggers": ["flash_sale", "social_media"],
     "preferredTone": "funny"
   }
 }
@@ -140,7 +154,7 @@ Response `200`:
 
 ### `PATCH /api/profile/:userId`
 
-Partially updates profile fields. Omitted fields stay unchanged.
+Partially updates profile fields. Omitted fields stay unchanged. `userId` cannot be changed through this endpoint.
 
 Request:
 
@@ -148,7 +162,7 @@ Request:
 {
   "displayName": "Minh Anh",
   "monthlyBudget": 3500000,
-  "mainGoal": "Mua laptop không nợ",
+  "mainGoal": "buy_laptop_debt_free",
   "triggers": ["stress", "sale"],
   "preferredTone": "strict-but-kind"
 }
@@ -168,13 +182,14 @@ Response `200`:
     "level": 1,
     "xp": 40,
     "discipline": 0,
-    "mainGoal": "Mua laptop không nợ",
+    "mainGoal": "buy_laptop_debt_free",
+    "targetAmount": 20000000,
+    "targetDate": null,
     "triggers": ["stress", "sale"],
     "preferredTone": "strict-but-kind"
   }
 }
 ```
-
 ## Expenses
 
 ### `POST /api/expenses/quick-input`

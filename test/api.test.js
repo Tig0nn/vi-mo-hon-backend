@@ -5,7 +5,107 @@ process.env.NODE_ENV = 'test';
 process.env.GEMINI_API_KEY = '';
 process.env.GEMINI_MODEL = '';
 
+const profileRepository = require('../src/repositories/profile.repository');
 const app = require('../app');
+
+const createFakeSupabaseClient = () => {
+  const state = {
+    profiles: new Map(),
+    userProgress: new Map(),
+  };
+
+  const now = () => new Date().toISOString();
+  const clone = (value) => JSON.parse(JSON.stringify(value));
+
+  const createBuilder = (table) => {
+    const builder = {
+      filter: {},
+      operation: null,
+      payload: null,
+      select() {
+        return this;
+      },
+      eq(column, value) {
+        this.filter[column] = value;
+        return this;
+      },
+      upsert(payload) {
+        if (table === 'user_progress') {
+          if (!state.userProgress.has(payload.user_id)) {
+            state.userProgress.set(payload.user_id, clone(payload));
+          }
+
+          return Promise.resolve({ data: null, error: null });
+        }
+
+        this.operation = 'upsert';
+        this.payload = payload;
+        return this;
+      },
+      update(payload) {
+        this.operation = 'update';
+        this.payload = payload;
+        return this;
+      },
+      async maybeSingle() {
+        if (table === 'user_progress') {
+          const progress = state.userProgress.get(this.filter.user_id);
+          return { data: progress ? clone(progress) : null, error: null };
+        }
+
+        if (table !== 'profiles') {
+          return { data: null, error: null };
+        }
+
+        const userId = this.filter.user_id;
+
+        if (this.operation === 'update') {
+          const existing = state.profiles.get(userId);
+          if (!existing) {
+            return { data: null, error: null };
+          }
+
+          const updated = { ...existing, ...this.payload };
+          state.profiles.set(userId, updated);
+          return { data: clone(updated), error: null };
+        }
+
+        const profile = state.profiles.get(userId);
+        return { data: profile ? clone(profile) : null, error: null };
+      },
+      async single() {
+        if (table !== 'profiles' || this.operation !== 'upsert') {
+          return { data: null, error: null };
+        }
+
+        const existing = state.profiles.get(this.payload.user_id);
+        const timestamp = now();
+        const profile = {
+          id: existing ? existing.id : `profile-${state.profiles.size + 1}`,
+          created_at: existing ? existing.created_at : timestamp,
+          currency: 'VND',
+          triggers: [],
+          preferred_tone: 'funny',
+          ...existing,
+          ...this.payload,
+          updated_at: this.payload.updated_at || timestamp,
+        };
+
+        state.profiles.set(profile.user_id, profile);
+        return { data: clone(profile), error: null };
+      },
+    };
+
+    return builder;
+  };
+
+  return {
+    state,
+    from(table) {
+      return createBuilder(table);
+    },
+  };
+};
 
 const startServer = () =>
   new Promise((resolve) => {
@@ -31,9 +131,18 @@ const requestJson = async (baseUrl, path, options = {}) => {
   return { response, body };
 };
 
+let fakeSupabaseClient;
+
 test.beforeEach(() => {
   const { resetMockData } = require('../src/data/mockStore');
   resetMockData();
+  fakeSupabaseClient = createFakeSupabaseClient();
+  profileRepository.setSupabaseClientForTest(fakeSupabaseClient);
+});
+
+test.afterEach(() => {
+  profileRepository.clearSupabaseClientForTest();
+  fakeSupabaseClient = null;
 });
 
 test('health check and not found responses use the shared API response shape', async () => {
@@ -57,7 +166,7 @@ test('health check and not found responses use the shared API response shape', a
   }
 });
 
-test('profile endpoints create, read, and partially update a mock profile', async () => {
+test('profile endpoints create, read, and partially update a Supabase-backed profile', async () => {
   const server = await startServer();
 
   try {
@@ -108,6 +217,86 @@ test('profile endpoints create, read, and partially update a mock profile', asyn
     assert.equal(update.body.data.mainGoal, 'Mua laptop không nợ');
     assert.deepEqual(update.body.data.triggers, ['stress', 'sale']);
     assert.equal(update.body.data.preferredTone, 'strict-but-kind');
+  } finally {
+    await server.close();
+  }
+});
+
+test('posting the same profile user updates profile fields without resetting user progress', async () => {
+  const server = await startServer();
+
+  try {
+    const first = await requestJson(server.baseUrl, '/api/profile', {
+      method: 'POST',
+      body: JSON.stringify({
+        userId: 'mock-user',
+        displayName: 'Minh',
+        monthlyBudget: 3000000,
+        currency: 'VND',
+        mainGoal: 'Tiet kiem 20 trieu',
+      }),
+    });
+
+    assert.equal(first.response.status, 201);
+    fakeSupabaseClient.state.userProgress.set('mock-user', {
+      user_id: 'mock-user',
+      xp: 77,
+      level: 3,
+      discipline: 9,
+      savings: 123000,
+      knowledge: 4,
+    });
+
+    const second = await requestJson(server.baseUrl, '/api/profile', {
+      method: 'POST',
+      body: JSON.stringify({
+        userId: 'mock-user',
+        displayName: 'Minh Updated',
+        monthlyBudget: 3500000,
+        currency: 'VND',
+        mainGoal: 'Mua laptop khong no',
+        preferredTone: 'gentle',
+      }),
+    });
+
+    assert.equal(second.response.status, 201);
+    assert.equal(second.body.data.displayName, 'Minh Updated');
+    assert.equal(second.body.data.mainGoal, 'Mua laptop khong no');
+    assert.deepEqual(fakeSupabaseClient.state.userProgress.get('mock-user'), {
+      user_id: 'mock-user',
+      xp: 77,
+      level: 3,
+      discipline: 9,
+      savings: 123000,
+      knowledge: 4,
+    });
+  } finally {
+    await server.close();
+  }
+});
+
+test('profile endpoint returns 404 for a missing user and 400 for invalid tone', async () => {
+  const server = await startServer();
+
+  try {
+    const missing = await requestJson(server.baseUrl, '/api/profile/missing-user');
+    assert.equal(missing.response.status, 404);
+    assert.equal(missing.body.message, 'Profile not found');
+
+    const invalidTone = await requestJson(server.baseUrl, '/api/profile', {
+      method: 'POST',
+      body: JSON.stringify({
+        userId: 'mock-user',
+        displayName: 'Minh',
+        monthlyBudget: 3000000,
+        mainGoal: 'Tiet kiem 20 trieu',
+        preferredTone: 'mean',
+      }),
+    });
+
+    assert.equal(invalidTone.response.status, 400);
+    assert.equal(invalidTone.body.success, false);
+    assert.ok(invalidTone.body.errors);
   } finally {
     await server.close();
   }
@@ -210,6 +399,7 @@ test('challenge completion rewards XP, discipline, boss damage, and updates dash
         displayName: 'Minh',
         monthlyBudget: 3000000,
         currency: 'VND',
+        mainGoal: 'Tiet kiem 20 trieu',
       }),
     });
 
@@ -258,6 +448,7 @@ test('challenge completion cannot damage boss below zero or complete twice', asy
         displayName: 'Minh',
         monthlyBudget: 3000000,
         currency: 'VND',
+        mainGoal: 'Tiet kiem 20 trieu',
       }),
     });
 
@@ -633,7 +824,7 @@ test('API validates bad profile and expense requests', async () => {
       }),
     });
 
-    assert.equal(invalidProfile.response.status, 422);
+    assert.equal(invalidProfile.response.status, 400);
     assert.equal(invalidProfile.body.success, false);
     assert.ok(invalidProfile.body.errors);
 
