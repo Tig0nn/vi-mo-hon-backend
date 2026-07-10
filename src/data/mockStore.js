@@ -3,9 +3,11 @@ const state = {
   challengeStatuses: new Map(),
   profiles: new Map(),
   expenses: [],
+  spendingUrges: [],
   counters: {
     profile: 1,
     expense: 1,
+    urge: 1,
   },
 };
 
@@ -34,9 +36,11 @@ const resetMockData = () => {
   state.challengeStatuses.clear();
   state.profiles.clear();
   state.expenses = [];
+  state.spendingUrges = [];
   state.counters = {
     profile: 1,
     expense: 1,
+    urge: 1,
   };
 };
 
@@ -51,6 +55,9 @@ const createProfile = (input) => {
     level: 1,
     xp: 0,
     discipline: 0,
+    mainGoal: input.mainGoal || null,
+    triggers: input.triggers || [],
+    preferredTone: input.preferredTone || null,
     createdAt: timestamp,
     updatedAt: timestamp,
   };
@@ -130,6 +137,25 @@ const createExpense = (input) => {
 
   state.expenses.push(expense);
   return clone(expense);
+};
+
+const createSpendingUrge = (input) => {
+  const timestamp = new Date().toISOString();
+  const urge = {
+    id: nextId('urge'),
+    userId: input.userId,
+    itemName: input.itemName,
+    amount: input.amount,
+    reason: input.reason,
+    detectedTrigger: input.detectedTrigger,
+    suggestedAction: input.suggestedAction,
+    status: 'PENDING',
+    createdAt: timestamp,
+    updatedAt: timestamp,
+  };
+
+  state.spendingUrges.push(urge);
+  return clone(urge);
 };
 
 const listExpensesByUserId = (userId, { page = 1, pageSize = 20 } = {}) => {
@@ -246,6 +272,7 @@ module.exports = {
   completeChallenge,
   createExpense,
   createProfile,
+  createSpendingUrge,
   damageBoss,
   findChallengeById,
   findProfileByUserId,
