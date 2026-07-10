@@ -208,6 +208,8 @@ Profile onboarding enforces these canonical trigger codes. Anti-Regret Coach cur
 
 ## Expenses
 
+Expense writes are persisted through a backend-only Supabase RPC so creating the expense and awarding its 5 XP succeed or fail together. List and dashboard reads come from `expenses`; API currency remains the computed value `VND`. Category inputs may be uppercase or lowercase canonical values, while responses preserve the existing uppercase convention.
+
 ### `POST /api/expenses/quick-input`
 
 Creates an expense from a fast text or structured input, then updates XP progression.
@@ -289,6 +291,8 @@ Response `200`:
 ```
 
 ## Dashboard
+
+Dashboard data is Supabase-backed: profile/progress, current UTC-month expenses, up to five newest expenses, user boss progress, and active user challenges. It contains no Reflection data.
 
 ### `GET /api/dashboard/:userId`
 
@@ -499,6 +503,8 @@ Response `200`:
 ```
 
 ## Challenges
+
+Active challenges and completion results are persisted. Completion is an atomic backend-only RPC operation: it can award XP/discipline and apply boss damage only once, and a repeated completion returns `409`.
 
 ### `GET /api/challenges?userId=mock-user`
 

@@ -1,4 +1,5 @@
 const mockStore = require('../data/mockStore');
+const expenseRepository = require('../repositories/expense.repository');
 const { createHttpError } = require('../utils/httpError');
 const geminiService = require('./gemini.service');
 
@@ -111,15 +112,13 @@ const buildCoachMessage = (profile, input, detectedTrigger, suggestedAction) => 
   return `Khoan chốt ${itemName}. Đợi 24h, so với goal "${goal}", rồi quyết nha.`;
 };
 
-const buildRecentSpendingSummary = (userId) => {
-  const recentExpenses = mockStore.listExpensesByUserId(userId, { page: 1, pageSize: 3 });
-  const totalSpent = mockStore.sumExpensesByUserId(userId);
+const buildRecentSpendingSummary = (recentExpenses, totalSpent) => {
 
-  if (recentExpenses.items.length === 0) {
+  if (recentExpenses.length === 0) {
     return 'No recent spending recorded.';
   }
 
-  const items = recentExpenses.items
+  const items = recentExpenses
     .map((expense) => {
       const category = expense.category || 'uncategorized';
       return `${category}: ${formatVnd(expense.amount)}`;
@@ -129,13 +128,32 @@ const buildRecentSpendingSummary = (userId) => {
   return `Total recorded spending: ${formatVnd(totalSpent)}. Recent expenses: ${items}.`;
 };
 
-const listRecentExpenseContext = (userId) =>
-  mockStore.listExpensesByUserId(userId, { page: 1, pageSize: 5 }).items.map((expense) => ({
+const toCoachExpense = (expense) => ({
     amount: expense.amount,
     category: expense.category || 'uncategorized',
     occurredAt: expense.occurredAt,
     text: expense.text || null,
-  }));
+  });
+
+const getRecentSpendingContext = async (userId) => {
+  try {
+    const recent = await expenseRepository.listExpensesByUserId(userId, { page: 1, pageSize: 5 });
+    if (recent.pagination.totalItems > 0) {
+      return {
+        recentExpenses: recent.items.map(toCoachExpense),
+        totalSpent: await expenseRepository.sumExpensesByUserId(userId),
+      };
+    }
+  } catch (error) {
+    console.warn('[Supabase] coach spending context unavailable', getSafeGeminiErrorDetails(error));
+  }
+
+  const mockExpenses = mockStore.listExpensesByUserId(userId, { page: 1, pageSize: 5 }).items;
+  return {
+    recentExpenses: mockExpenses.map(toCoachExpense),
+    totalSpent: mockStore.sumExpensesByUserId(userId),
+  };
+};
 
 const buildRecentExpenseSummaryForChat = (recentExpenses) => {
   if (!recentExpenses.length) {
@@ -169,6 +187,7 @@ const createAntiRegretResponse = async (input, options = {}) => {
   const fallbackCoachMessage = buildCoachMessage(profile, input, detectedTrigger, suggestedAction);
   const generateCoachMessage =
     options.generateCoachMessage || geminiService.generateAntiRegretCoachMessage;
+  const spendingContext = await getRecentSpendingContext(input.userId);
 
   let coachMessage = fallbackCoachMessage;
   let providerUsed = 'fallback';
@@ -182,7 +201,7 @@ const createAntiRegretResponse = async (input, options = {}) => {
       reason: input.reason,
       detectedTrigger,
       suggestedAction,
-      recentSpendingSummary: buildRecentSpendingSummary(input.userId),
+      recentSpendingSummary: buildRecentSpendingSummary(spendingContext.recentExpenses, spendingContext.totalSpent),
     });
 
     if (generatedMessage) {
@@ -211,8 +230,7 @@ const createChatResponse = async (input, options = {}) => {
     throw createHttpError(404, 'Profile not found');
   }
 
-  const monthlySpent = mockStore.sumExpensesByUserId(input.userId);
-  const recentExpenses = listRecentExpenseContext(input.userId);
+  const spendingContext = await getRecentSpendingContext(input.userId);
   const generateChatReply = options.generateChatReply || geminiService.generateCoachChatReply;
 
   const generatedReply = await generateChatReply({
@@ -221,9 +239,9 @@ const createChatResponse = async (input, options = {}) => {
     triggers: profile.triggers || [],
     preferredTone: profile.preferredTone,
     monthlyBudget: profile.monthlyBudget,
-    monthlySpent,
-    recentExpenses,
-    recentSpendingSummary: buildRecentExpenseSummaryForChat(recentExpenses),
+    monthlySpent: spendingContext.totalSpent,
+    recentExpenses: spendingContext.recentExpenses,
+    recentSpendingSummary: buildRecentExpenseSummaryForChat(spendingContext.recentExpenses),
   });
 
   return {

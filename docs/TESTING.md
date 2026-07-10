@@ -8,6 +8,65 @@ Do not mark a check PASS unless it has actually been run and recorded for the re
 - [ ] The read query against `bosses` succeeds.
 - [ ] No secret appears in command output.
 
+## Expense, challenge, and dashboard persistence
+
+1. Run `supabase/migrations/20260710_expense_challenge_persistence.sql` in Supabase SQL Editor. Do not add `DATABASE_URL` or create another project.
+2. Start the API and create/update a test profile:
+
+```http
+POST /api/profile
+Content-Type: application/json
+
+{
+  "userId": "test-user-persistence",
+  "displayName": "Minh",
+  "monthlyBudget": 3000000,
+  "mainGoal": "save_money",
+  "targetAmount": 20000000,
+  "targetDate": "2027-01-01",
+  "triggers": ["flash_sale"]
+}
+```
+
+3. Run these Postman requests in order:
+
+```http
+POST /api/expenses/quick-input
+{ "userId": "test-user-persistence", "text": "tra sua 55000", "category": "FOOD_DRINK" }
+```
+
+Expected: `201`.
+
+```http
+GET /api/expenses?userId=test-user-persistence&page=1&pageSize=20
+GET /api/challenges?userId=test-user-persistence
+POST /api/challenges/challenge-1/complete
+{ "userId": "test-user-persistence" }
+POST /api/challenges/challenge-1/complete
+{ "userId": "test-user-persistence" }
+GET /api/dashboard/test-user-persistence
+```
+
+Expected statuses, respectively: `200`, `200`, `200`, `409`, `200`.
+
+Verify safely in the SQL Editor:
+
+```sql
+select id, user_id, title, amount, category, raw_text, spent_at
+from public.expenses where user_id = 'test-user-persistence' order by spent_at desc;
+
+select user_id, xp, level, discipline, savings, knowledge, wealth
+from public.user_progress where user_id = 'test-user-persistence';
+
+select user_id, challenge_id, status, completed_at
+from public.user_challenges where user_id = 'test-user-persistence';
+
+select user_id, boss_id, current_hp, status
+from public.user_boss_progress where user_id = 'test-user-persistence';
+```
+
+The second completion must leave XP, discipline, and boss HP unchanged.
+
 ## Profile API
 
 - [ ] A valid POST creates or upserts a Supabase profile.
@@ -16,6 +75,13 @@ Do not mark a check PASS unless it has actually been run and recorded for the re
 - [ ] GET returns the Supabase profile.
 - [ ] PATCH updates only supplied fields.
 - [ ] A missing profile returns `404`.
+
+## Automated persistence coverage
+
+- [x] Quick expenses persist through the atomic RPC and award exactly 5 XP.
+- [x] Expense listings are newest-first with exact pagination totals.
+- [x] Challenge completion is idempotent, awards persisted rewards once, and clamps boss HP at zero.
+- [x] Dashboard reads persisted progress, expenses, boss progress, and challenges without Reflection data.
 
 ## Implemented onboarding validation
 

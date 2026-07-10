@@ -7,20 +7,20 @@ const {
   challengeListQuerySchema,
 } = require('../validators/challenge.validator');
 
-const listActiveChallenges = (req, res, next) => {
+const listActiveChallenges = async (req, res, next) => {
   const result = challengeListQuerySchema.safeParse(req.query);
   if (!result.success) {
     return sendError(res, 'Validation failed', 422, formatZodErrors(result.error));
   }
 
   try {
-    return sendSuccess(res, challengeService.listActiveChallenges(result.data.userId), 'Challenges retrieved', 200);
+    return sendSuccess(res, await challengeService.listActiveChallenges(result.data.userId), 'Challenges retrieved', 200);
   } catch (error) {
     return next(error);
   }
 };
 
-const completeChallenge = (req, res, next) => {
+const completeChallenge = async (req, res, next) => {
   const paramsResult = challengeIdSchema.safeParse(req.params.challengeId);
   if (!paramsResult.success) {
     return sendError(res, 'Validation failed', 422, formatZodErrors(paramsResult.error));
@@ -34,7 +34,7 @@ const completeChallenge = (req, res, next) => {
   try {
     return sendSuccess(
       res,
-      challengeService.completeChallenge(bodyResult.data.userId, paramsResult.data),
+      await challengeService.completeChallenge(bodyResult.data.userId, paramsResult.data),
       'Challenge completed',
       200
     );

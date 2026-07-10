@@ -6,6 +6,10 @@ process.env.GEMINI_API_KEY = '';
 process.env.GEMINI_MODEL = '';
 
 const profileRepository = require('../src/repositories/profile.repository');
+const expenseRepository = require('../src/repositories/expense.repository');
+const challengeRepository = require('../src/repositories/challenge.repository');
+const bossRepository = require('../src/repositories/boss.repository');
+const { createFakeSupabaseClient: createPersistenceFakeSupabaseClient } = require('./fakeSupabase');
 const app = require('../app');
 
 const createFakeSupabaseClient = () => {
@@ -150,12 +154,18 @@ let fakeSupabaseClient;
 test.beforeEach(() => {
   const { resetMockData } = require('../src/data/mockStore');
   resetMockData();
-  fakeSupabaseClient = createFakeSupabaseClient();
+  fakeSupabaseClient = createPersistenceFakeSupabaseClient();
   profileRepository.setSupabaseClientForTest(fakeSupabaseClient);
+  expenseRepository.setSupabaseClientForTest(fakeSupabaseClient);
+  challengeRepository.setSupabaseClientForTest(fakeSupabaseClient);
+  bossRepository.setSupabaseClientForTest(fakeSupabaseClient);
 });
 
 test.afterEach(() => {
   profileRepository.clearSupabaseClientForTest();
+  expenseRepository.clearSupabaseClientForTest();
+  challengeRepository.clearSupabaseClientForTest();
+  bossRepository.clearSupabaseClientForTest();
   fakeSupabaseClient = null;
 });
 

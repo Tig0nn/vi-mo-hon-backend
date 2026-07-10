@@ -1,6 +1,6 @@
 # Database Schema
 
-This document records only the Supabase tables used by the current backend persistence slice. It is not a proposal for future Expense, Challenge, Boss, Dashboard, or Reflection tables. Those modules remain mock-backed or hybrid; no migration is part of this documentation-only change.
+This document records the existing Supabase tables used by the backend persistence slices. The backend reuses them; it does not create a new database or Supabase project. Reflection remains out of scope.
 
 API fields are camelCase and database columns are snake_case. Monetary values are VND integer amounts: `55000` means 55,000 VND. Until authentication exists, the backend uses text-based user IDs such as `mock-user` and assigned `test-user-*` values.
 
@@ -37,6 +37,29 @@ Profile POST initializes this row once with an `upsert` on `user_id` using `igno
 | `knowledge` | integer | Initialized to `0` |
 
 The current repository does not select an `id`, `wealth`, `created_at`, or `updated_at` field from `user_progress`; this document does not assert their presence, absence, type, generated status, or nullability.
+
+## Expense and game persistence
+
+Run `supabase/migrations/20260710_expense_challenge_persistence.sql` once through the Supabase SQL Editor before using this slice against the live project. It is idempotent and never drops, truncates, or deletes data.
+
+The migration adds only these columns when absent:
+
+- `challenges.difficulty text not null default 'easy'`
+- `challenges.discipline_reward integer not null default 5`
+
+It reuses these existing tables:
+
+| Table | Backend use |
+| --- | --- |
+| `expenses` | Quick expense records; `spent_at` maps to API `occurredAt`, and `raw_text` maps to API `text`. Currency is computed as `VND`. |
+| `challenges` | Seeded MVP definition (`challenge-1`) and rewards. |
+| `user_challenges` | Per-user status and completion time, keyed by `(user_id, challenge_id)`. |
+| `bosses` | Seeded `impulse-boss` definition. |
+| `user_boss_progress` | Per-user boss HP/status, keyed by `(user_id, boss_id)`. |
+
+`ensure_default_game_state_v1(text)` lazily creates missing progress, challenge, and boss rows without resetting existing state. `record_expense_and_add_xp_v1(...)` inserts one expense and awards XP atomically. `complete_challenge_v1(text, text)` locks the user challenge row and atomically marks completion, awards progress, and damages the linked boss. All three functions use a safe `search_path`; execution is revoked from `PUBLIC`, `anon`, and `authenticated`, then granted only to `service_role`.
+
+Dashboard monthly spending uses UTC calendar-month boundaries (`[UTC month start, next UTC month start)`) consistently.
 
 ## API-required fields versus nullable legacy columns
 

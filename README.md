@@ -42,6 +42,21 @@ Run in normal mode:
 npm start
 ```
 
+## Supabase persistence migration
+
+Profiles, progress, expenses, challenges, boss progress, and dashboard reads reuse the existing Supabase project and tables. No `pg`, `DATABASE_URL`, new database, or new Supabase project is required.
+
+Before exercising expense, challenge, or dashboard persistence against Supabase, run [20260710_expense_challenge_persistence.sql](supabase/migrations/20260710_expense_challenge_persistence.sql) in the Supabase SQL Editor. It only adds `challenges.difficulty` and `challenges.discipline_reward` when missing, safely seeds the MVP boss/challenge, and creates backend-only RPC functions for atomic writes.
+
+The backend still requires only:
+
+```text
+SUPABASE_URL
+SUPABASE_SECRET_KEY
+```
+
+The Expo client must continue calling this Express API, never Supabase directly.
+
 The default server port is `3000`.
 
 Environment variables are loaded and validated from `src/config/env.js`. `PORT`, `NODE_ENV`, and `GEMINI_MODEL` have safe defaults; Supabase, OpenAI, and Gemini keys can stay empty until those integration slices are used. If `GEMINI_API_KEY` is missing, the Anti-Regret Coach uses the rule-based fallback. Coach chat requires Gemini and returns an AI error instead of a fake response when Gemini is unavailable or returns invalid output.
@@ -102,11 +117,7 @@ vi-mo-hon-backend/
 +-- .env.example
 ```
 
-Planned additions for later slices:
-
-- `src/config/supabase.js` for Supabase persistence
-- Anti-Regret Coach and challenge modules
-- Reflection as a future/post-demo module
+Reflection remains a future/post-demo module.
 
 ## Documentation
 

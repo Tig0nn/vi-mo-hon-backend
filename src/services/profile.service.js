@@ -37,6 +37,7 @@ const createProfile = async (input) => {
   try {
     const profile = await profileRepository.upsertProfile(input);
     await profileRepository.ensureUserProgress(input.userId);
+    await profileRepository.ensureDefaultGameState(input.userId);
     syncMockProfile(profile);
     return profile;
   } catch (error) {

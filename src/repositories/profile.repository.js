@@ -172,8 +172,22 @@ const ensureUserProgress = async (userId) => {
   }
 };
 
+const ensureDefaultGameState = async (userId) => {
+  const { data, error } = await getClient().rpc('ensure_default_game_state_v1', {
+    p_user_id: userId,
+  });
+
+  if (error) {
+    throw error;
+  }
+
+  const result = Array.isArray(data) ? data[0] : data;
+  return result && result.outcome;
+};
+
 module.exports = {
   clearSupabaseClientForTest,
+  ensureDefaultGameState,
   ensureUserProgress,
   findProfileByUserId,
   setSupabaseClientForTest,
