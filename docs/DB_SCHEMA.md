@@ -1,198 +1,57 @@
 # Database Schema
 
-This document defines the planned Supabase/PostgreSQL schema for the demo MVP. Use `mock-user` for local development and assigned `test-user-*` IDs for external demo testing until authentication is introduced.
+This document records only the Supabase tables used by the current backend persistence slice. It is not a proposal for future Expense, Challenge, Boss, Dashboard, or Reflection tables. Those modules remain mock-backed or hybrid; no migration is part of this documentation-only change.
 
-The demo MVP stores profile personalization, quick expenses, Anti-Regret Coach urges, challenges, XP/stats, boss progress, and dashboard data. Local reminders remain part of the product demo scope but do not require backend reminder tables yet. Reflection is a future/post-demo feature only and is not required for the current demo schema.
-
-## Conventions
-
-- Primary keys use UUIDs.
-- Timestamps use `timestamptz`.
-- API response fields use camelCase.
-- Database columns use snake_case.
-- Money amounts are stored as integer minor units for VND, so `55000` means `55,000 VND`.
-- Start with simple tables and add constraints as product behavior becomes stable.
-
-## Demo User Strategy
-
-Before authentication is introduced, the backend should use text-based user IDs.
-
-For external demo testing, create or allow these user IDs:
-
-- test-user-1
-- test-user-2
-- test-user-3
-- test-user-4
-- test-user-5
-
-Do not use only `mock-user` for external testers because their data would overlap.
-
-## Tables
+API fields are camelCase and database columns are snake_case. Monetary values are VND integer amounts: `55000` means 55,000 VND. Until authentication exists, the backend uses text-based user IDs such as `mock-user` and assigned `test-user-*` values.
 
 ## `profiles`
 
-Stores one financial habit profile per user.
+The repository treats `user_id` as the profile key and upsert conflict target. It selects and writes only the columns below; it does not select an `id` or `currency` column. `currency: "VND"` in an API response is computed for compatibility, not persisted by this repository.
 
-| Column            | Type          | Required | Notes                                                   |
-| ----------------- | ------------- | -------- | ------------------------------------------------------- |
-| `user_id`         | `text`        | yes      | Unique profile key until auth exists                    |
-| `display_name`    | `text`        | yes      | User-facing name                                        |
-| `monthly_budget`  | `integer`     | yes      | VND amount                                              |
-| `created_at`      | `timestamptz` | yes      | Default `now()`                                         |
-| `updated_at`      | `timestamptz` | yes      | Default `now()`                                         |
-| `main_goal`       | `text`        | no       | Example: save 20,000,000 VND                            |
-| `target_amount`   | `integer`     | no       | Target VND amount                                       |
-| `target_date`     | `date`        | no       | Optional savings target date                            |
-| `triggers`        | `jsonb`       | no       | Example: ["flash_sale", "stress", "friends"]            |
-| `preferred_tone`  | `text`        | no       | `gentle`, `funny`, `sarcastic-light`, `strict-but-kind` |
+| Column | Database type / nullability | Current backend use |
+| --- | --- | --- |
+| `user_id` | text; non-null unique key | Profile key and upsert conflict target |
+| `display_name` | text | Read and written |
+| `monthly_budget` | integer | Read and written as VND amount |
+| `main_goal` | text | Read and written stable goal code/text |
+| `target_amount` | integer; nullable | Read and written target VND amount |
+| `target_date` | date; nullable | Read and written target deadline |
+| `triggers` | jsonb; nullable | Read and written as an array |
+| `preferred_tone` | text; nullable | Read and written; API defaults missing values to `funny` |
+| `created_at` | timestamptz | Read from Supabase |
+| `updated_at` | timestamptz | Read and written by the repository |
 
-Recommended indexes:
-
-- Unique index on `user_id`
+No `profiles.id` column is selected by the repository. The API mapper therefore returns `user_id` as `id` unless a selected row eventually includes an `id` property. No `profiles.currency` column is selected or written.
 
 ## `user_progress`
 
-Stores one progress row per user. Profile creation initializes this row if it does not already exist. Do not write to generated columns such as `wealth` directly.
+Profile POST initializes this row once with an `upsert` on `user_id` using `ignoreDuplicates: true`, so repeated Profile POSTs do not reset progress. The repository reads only the following fields:
 
-| Column       | Type          | Required | Notes                       |
-| ------------ | ------------- | -------- | --------------------------- |
-| `id`         | `uuid`        | yes      | Primary key                 |
-| `user_id`    | `text`        | yes      | Unique until auth exists    |
-| `xp`         | `integer`     | yes      | Default `0`                 |
-| `level`      | `integer`     | yes      | Default `1`                 |
-| `discipline` | `integer`     | yes      | Default `0`                 |
-| `savings`    | `integer`     | yes      | Default `0`                 |
-| `knowledge`  | `integer`     | yes      | Default `0`                 |
-| `wealth`     | `integer`     | yes      | Generated by PostgreSQL     |
-| `created_at` | `timestamptz` | yes      | Default `now()`             |
-| `updated_at` | `timestamptz` | yes      | Default `now()`             |
+| Column | Database type / nullability | Current backend use |
+| --- | --- | --- |
+| `user_id` | text; non-null unique key | Progress lookup and upsert conflict target |
+| `xp` | integer | Initialized to `0`, read into Profile API |
+| `level` | integer | Initialized to `1`, read into Profile API |
+| `discipline` | integer | Initialized to `0`, read into Profile API |
+| `savings` | integer | Initialized to `0` |
+| `knowledge` | integer | Initialized to `0` |
 
-Recommended indexes:
+The current repository does not select an `id`, `wealth`, `created_at`, or `updated_at` field from `user_progress`; this document does not assert their presence, absence, type, generated status, or nullability.
 
-- Unique index on `user_id`
+## API-required fields versus nullable legacy columns
 
-## `expenses`
+The next onboarding implementation must require positive `monthlyBudget` and `targetAmount`, a future `targetDate`, and at least one trigger. The existing profile database columns `monthly_budget`, `target_amount`, `target_date`, `triggers`, and `preferred_tone` may currently be nullable to preserve compatibility with incomplete/legacy profiles. Do not add `NOT NULL` constraints in this docs-only task; assess and handle legacy profiles before a future constraint migration.
 
-Stores quick expense entries.
+## Planned Schema: Remote Push Notifications
 
-| Column        | Type          | Required | Notes                               |
-| ------------- | ------------- | -------- | ----------------------------------- |
-| `id`          | `uuid`        | yes      | Primary key                         |
-| `user_id`     | `text`        | yes      | References `profiles.user_id` later |
-| `text`        | `text`        | no       | Raw quick input                     |
-| `amount`      | `integer`     | yes      | Positive VND amount                 |
-| `currency`    | `text`        | yes      | Default `VND`                       |
-| `category`    | `text`        | no       | Example: `FOOD_DRINK`               |
-| `occurred_at` | `timestamptz` | yes      | Defaults to server time             |
-| `created_at`  | `timestamptz` | yes      | Default `now()`                     |
-| `updated_at`  | `timestamptz` | yes      | Default `now()`                     |
+Remote push notifications are a future final MVP milestone. Possible future tables include:
 
-Recommended indexes:
+- `device_push_tokens`
+- `notification_preferences`
+- `notification_delivery_logs`
 
-- `(user_id, occurred_at desc)`
-- `(user_id, category)`
+There is no notification migration and no production notification table in the current scope. The final schema will be decided when the dedicated push-notification milestone starts.
 
-## `spending_urges`
+## Future / Post-demo
 
-Stores planned purchases or buying urges before the user actually spends money.
-
-| Column       | Type          | Required | Notes                                     |
-| ------------ | ------------- | -------- | ----------------------------------------- |
-| `id`         | `uuid`        | yes      | Primary key                               |
-| `user_id`    | `text`        | yes      | Owner                                     |
-| `item_name`  | `text`        | yes      | Item user wants to buy                    |
-| `amount`     | `integer`     | no       | Planned amount in VND                     |
-| `reason`     | `text`        | no       | Why the user wants it                     |
-| `trigger`    | `text`        | no       | Example: `FLASH_SALE`, `FOMO`, `STRESS`   |
-| `status`     | `text`        | yes      | `PENDING`, `BOUGHT`, `SKIPPED`, `DELAYED` |
-| `created_at` | `timestamptz` | yes      | Default `now()`                           |
-| `updated_at` | `timestamptz` | yes      | Default `now()`                           |
-
-## `boss_states`
-
-Stores gamified progress for the current behavioral boss.
-
-| Column       | Type          | Required | Notes                     |
-| ------------ | ------------- | -------- | ------------------------- |
-| `id`         | `uuid`        | yes      | Primary key               |
-| `user_id`    | `text`        | yes      | One active state per user |
-| `boss_id`    | `text`        | yes      | Example: `impulse-boss`   |
-| `boss_name`  | `text`        | yes      | Example: `Impulse Boss`   |
-| `current_hp` | `integer`     | yes      | Current HP                |
-| `max_hp`     | `integer`     | yes      | Max HP                    |
-| `status`     | `text`        | yes      | `ACTIVE`, `DEFEATED`      |
-| `created_at` | `timestamptz` | yes      | Default `now()`           |
-| `updated_at` | `timestamptz` | yes      | Default `now()`           |
-
-Recommended indexes:
-
-- Unique partial index for one active boss per `user_id`
-
-## `xp_events`
-
-Stores progression changes as an append-only log.
-
-| Column        | Type          | Required | Notes                                |
-| ------------- | ------------- | -------- | ------------------------------------ |
-| `id`          | `uuid`        | yes      | Primary key                          |
-| `user_id`     | `text`        | yes      | Owner                                |
-| `source_type` | `text`        | yes      | `EXPENSE`, `SPENDING_URGE`, `CHALLENGE` |
-| `source_id`   | `uuid`        | no       | Related entity id                    |
-| `xp_delta`    | `integer`     | yes      | Can be positive or negative later    |
-| `reason`      | `text`        | no       | Short explanation                    |
-| `created_at`  | `timestamptz` | yes      | Default `now()`                      |
-
-Recommended indexes:
-
-- `(user_id, created_at desc)`
-
-## `challenges`
-
-Stores challenge definitions.
-
-| Column        | Type          | Required | Notes                    |
-| ------------- | ------------- | -------- | ------------------------ |
-| `id`          | `uuid`        | yes      | Primary key              |
-| `code`        | `text`        | yes      | Unique stable code       |
-| `title`       | `text`        | yes      | User-facing title        |
-| `description` | `text`        | yes      | User-facing description  |
-| `xp_reward`   | `integer`     | yes      | XP granted on completion |
-| `is_active`   | `boolean`     | yes      | Default `true`           |
-| `created_at`  | `timestamptz` | yes      | Default `now()`          |
-
-Recommended indexes:
-
-- Unique index on `code`
-- `is_active`
-
-## `user_challenges`
-
-Stores challenge assignment and completion state per user.
-
-| Column         | Type          | Required | Notes                            |
-| -------------- | ------------- | -------- | -------------------------------- |
-| `id`           | `uuid`        | yes      | Primary key                      |
-| `user_id`      | `text`        | yes      | Owner                            |
-| `challenge_id` | `uuid`        | yes      | References `challenges.id`       |
-| `status`       | `text`        | yes      | `ACTIVE`, `COMPLETED`, `EXPIRED` |
-| `completed_at` | `timestamptz` | no       | Set on completion                |
-| `created_at`   | `timestamptz` | yes      | Default `now()`                  |
-| `updated_at`   | `timestamptz` | yes      | Default `now()`                  |
-
-Recommended indexes:
-
-- `(user_id, status)`
-- Unique index on `(user_id, challenge_id)`
-
-## Future Auth Notes
-
-When authentication is added:
-
-- Replace `text user_id` with Supabase auth user ids where appropriate.
-- Add row-level security policies for every user-owned table.
-- Ensure service-role keys are used only from trusted backend environments.
-- Keep frontend clients away from AI provider keys and backend-only secrets.
-
-## Future / Post-demo: Reflections
-
-A future Reflection release may add a `reflections` table for short post-purchase learning notes and may add `REFLECTION` as an `xp_events.source_type`. Do not require those for the current demo MVP.
+Reflection remains future/post-demo. When authentication is added, preserve the rule that Supabase service-role/secret keys stay in trusted backend environments and that frontend clients call the Express API rather than Supabase directly.

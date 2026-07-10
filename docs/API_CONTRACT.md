@@ -4,19 +4,9 @@ This document defines the demo MVP REST contract. Keep this file updated wheneve
 
 The current demo API focuses on quick expense input, AI Anti-Regret Coach, profile personalization, local reminders, challenges, XP/stats, boss progress, and dashboard. Reflection is a future/post-demo feature only. AI provider calls are backend-only; clients must never call Gemini directly or receive provider secrets.
 
-## Demo User IDs
+## User identity before authentication
 
-During local development, `mock-user` can be used.
-
-For the 5-person external demo, use assigned user IDs:
-
-- `test-user-1`
-- `test-user-2`
-- `test-user-3`
-- `test-user-4`
-- `test-user-5`
-
-The API should accept these IDs the same way it accepts `mock-user`.
+On first launch, the client generates a stable device-scoped `userId` and stores it locally. Every user-scoped request must reuse that value after reloads; the API treats it as an opaque non-empty identifier. The client sends it only to the Express backend.
 
 ## Shared Response Shape
 
@@ -39,6 +29,8 @@ Error:
   "errors": {}
 }
 ```
+
+The normal error shape is `success`, `message`, and optional `errors` validation details. `POST /api/coach/chat` is the current documented exception: AI provider failures include `error.code` and optional safe `debug` metadata so the client can distinguish provider and invalid-response failures. Do not assume the `error` object is present for non-Coach errors.
 
 ## Error Semantics
 
@@ -73,31 +65,34 @@ Response `200`:
 
 ### `POST /api/profile`
 
-Creates or updates a Supabase-backed user profile before authentication exists. The backend also ensures a `user_progress` row exists without resetting existing progress.
+Creates or updates a Supabase-backed user profile before authentication exists. The backend also ensures a `user_progress` row exists without resetting existing progress. The current controller always responds `201` with `"Profile created"`, including an update through this upsert path.
 
 Request:
 
 ```json
 {
-  "userId": "mock-user",
+  "userId": "vmh-device-generated-id",
   "displayName": "Minh",
   "monthlyBudget": 3000000,
-  "currency": "VND",
-  "mainGoal": "save_money",
+  "mainGoal": "reduce_impulse_shopping",
   "targetAmount": 20000000,
-  "targetDate": null,
-  "triggers": ["flash_sale", "social_media"],
+  "targetDate": "2026-12-31",
+  "triggers": ["friends", "flash_sale"],
   "preferredTone": "funny"
 }
 ```
 
 Rules:
 
-- `userId`, `displayName`, and `mainGoal` are required non-empty strings.
-- `monthlyBudget` and `targetAmount` must be non-negative integer VND amounts or `null`.
-- `targetDate` must be a valid date string or `null`.
-- `triggers` must be an array of strings.
-- `preferredTone` defaults to `funny` and must be one of `gentle`, `funny`, `sarcastic-light`, or `strict-but-kind`.
+- `userId` is a required trimmed, non-empty string.
+- `displayName` is required, trimmed, non-empty, and at most 80 characters.
+- `mainGoal` is required and must be one of `save_money`, `reduce_impulse_shopping`, `reduce_food_drink`, `reduce_sale_spending`, `emergency_fund`, or `other`.
+- `monthlyBudget` and `targetAmount` are required positive integer VND amounts.
+- `targetDate` is required, must use `YYYY-MM-DD`, must be a real calendar date, and must be in the future.
+- `triggers` is required, must contain at least one canonical trigger code, and duplicate values are removed.
+- `preferredTone` defaults to `funny`. Onboarding currently must not ask the user to choose it.
+
+`monthlyBudget` is the planned maximum monthly spending amount, not income, current balance, or total assets. `targetAmount` is the amount the user wants to save or achieve.
 
 Response `201`:
 
@@ -106,18 +101,18 @@ Response `201`:
   "success": true,
   "message": "Profile created",
   "data": {
-    "id": "6f6a8f0c-6e6c-4f0f-8e1a-9d5a8d2a9a11",
-    "userId": "mock-user",
+    "id": "vmh-device-generated-id",
+    "userId": "vmh-device-generated-id",
     "displayName": "Minh",
     "monthlyBudget": 3000000,
     "currency": "VND",
     "level": 1,
     "xp": 0,
     "discipline": 0,
-    "mainGoal": "save_money",
+    "mainGoal": "reduce_impulse_shopping",
     "targetAmount": 20000000,
-    "targetDate": null,
-    "triggers": ["flash_sale", "social_media"],
+    "targetDate": "2026-12-31",
+    "triggers": ["friends", "flash_sale"],
     "preferredTone": "funny",
     "createdAt": "2026-07-07T00:00:00.000Z",
     "updatedAt": "2026-07-07T00:00:00.000Z"
@@ -127,7 +122,7 @@ Response `201`:
 
 ### `GET /api/profile/:userId`
 
-Returns one Supabase-backed profile by user id. Missing profiles return `404`; this endpoint does not silently fall back to mock profile data.
+Reads one Supabase-backed profile by user id. Missing profiles return `404`; this endpoint does not silently fall back to mock profile data. `currency` is a backend-computed compatibility field with the default value `"VND"`; it is not selected from the `profiles` table.
 
 Response `200`:
 
@@ -136,17 +131,17 @@ Response `200`:
   "success": true,
   "message": "Profile retrieved",
   "data": {
-    "userId": "mock-user",
+    "userId": "vmh-device-generated-id",
     "displayName": "Minh",
     "monthlyBudget": 3000000,
     "currency": "VND",
     "level": 1,
     "xp": 40,
     "discipline": 0,
-    "mainGoal": "save_money",
+    "mainGoal": "reduce_impulse_shopping",
     "targetAmount": 20000000,
-    "targetDate": null,
-    "triggers": ["flash_sale", "social_media"],
+    "targetDate": "2026-12-31",
+    "triggers": ["friends", "flash_sale"],
     "preferredTone": "funny"
   }
 }
@@ -154,7 +149,7 @@ Response `200`:
 
 ### `PATCH /api/profile/:userId`
 
-Partially updates profile fields. Omitted fields stay unchanged. `userId` cannot be changed through this endpoint.
+Partially updates only supplied profile fields. Each supplied field follows the same validation rules as POST; omitted fields stay unchanged rather than becoming `null` or `undefined`. `userId` cannot be changed through this endpoint, an empty body returns `400`, and a missing profile returns `404`.
 
 Request:
 
@@ -162,8 +157,8 @@ Request:
 {
   "displayName": "Minh Anh",
   "monthlyBudget": 3500000,
-  "mainGoal": "buy_laptop_debt_free",
-  "triggers": ["stress", "sale"],
+  "mainGoal": "reduce_impulse_shopping",
+  "triggers": ["emotional_spending"],
   "preferredTone": "strict-but-kind"
 }
 ```
@@ -175,21 +170,42 @@ Response `200`:
   "success": true,
   "message": "Profile updated",
   "data": {
-    "userId": "mock-user",
+    "userId": "vmh-device-generated-id",
     "displayName": "Minh Anh",
     "monthlyBudget": 3500000,
     "currency": "VND",
     "level": 1,
     "xp": 40,
     "discipline": 0,
-    "mainGoal": "buy_laptop_debt_free",
+    "mainGoal": "reduce_impulse_shopping",
     "targetAmount": 20000000,
-    "targetDate": null,
-    "triggers": ["stress", "sale"],
+    "targetDate": "2026-12-31",
+    "triggers": ["emotional_spending"],
     "preferredTone": "strict-but-kind"
   }
 }
 ```
+### Goal and trigger codes
+
+The API may carry stable codes, but clients must map them to Vietnamese user-facing labels and never display raw codes as UI copy. Supported goal examples in this contract are `save_money`, `reduce_impulse_shopping`, `reduce_food_drink`, `reduce_sale_spending`, `emergency_fund`, and `other`.
+
+Canonical trigger taxonomy:
+
+| API code | User-facing label | Mapping intent |
+| --- | --- | --- |
+| `flash_sale` | Giảm giá hoặc voucher | Sale, deal, voucher, discount |
+| `fomo` | Sợ bỏ lỡ | Trend, fear of missing out |
+| `friends` | Bạn bè rủ rê | Bạn bè rủ, áp lực xã hội |
+| `emotional_spending` | Chi tiêu theo cảm xúc | Căng thẳng, buồn, chán, mệt |
+| `social_media` | Mạng xã hội | Nội dung quảng cáo hoặc người ảnh hưởng |
+| `payday` | Vừa nhận lương | Có tiền về và muốn chi ngay |
+| `social_comparison` | So sánh xã hội | Muốn mua để không thua kém người khác |
+| `food_craving` | Thèm ăn uống | Thèm đồ ăn hoặc thức uống |
+| `self_reward` | Tự thưởng | Muốn tự thưởng sau một việc |
+| `other` | Lý do khác | Không khớp taxonomy trên |
+
+Profile onboarding enforces these canonical trigger codes. Anti-Regret Coach currently has a narrower legacy enum; extending Coach to the full taxonomy requires a separate task.
+
 ## Expenses
 
 ### `POST /api/expenses/quick-input`
@@ -200,7 +216,7 @@ Request:
 
 ```json
 {
-  "userId": "mock-user",
+  "userId": "vmh-device-generated-id",
   "text": "tra sua 55000",
   "amount": 55000,
   "category": "FOOD_DRINK",
@@ -342,11 +358,11 @@ Rules:
 
 - `userId`, `itemName`, `amount`, and `reason` are required.
 - `amount` must be a positive integer VND amount.
-- `trigger` is optional. Valid values are `flash_sale`, `fomo`, `friends`, `emotional`, `self_reward`, and `other`.
+- `trigger` is optional. When supplied, it must use the canonical trigger taxonomy above.
 - If `trigger` is provided, the API uses it as `detectedTrigger`.
 - `mode` is optional and can be `BEFORE_PURCHASE` or `AFTER_PURCHASE`.
 - The user profile must already exist so the response can use `mainGoal`, `triggers`, and `preferredTone`.
-- If `trigger` is omitted, `detectedTrigger` is selected from matching profile triggers first, then simple fallback rules such as `flash_sale`, `emotional`, `fomo`, `friends`, `self_reward`, or `other`.
+- If `trigger` is omitted, `detectedTrigger` is selected from matching profile triggers first, then from the canonical mapping rules above.
 - Gemini prompts include the user's `mainGoal`, `triggers`, `preferredTone`, item details, detected trigger, suggested action, and recent spending summary when available.
 - Gemini errors are logged server-side without exposing API keys or provider internals. If the fallback succeeds, the endpoint still returns `200`.
 - Non-production responses include `debug.provider` with `gemini` or `fallback`. Production responses omit `debug`.
@@ -359,8 +375,8 @@ Response `200`:
   "message": "Coach response generated",
   "data": {
     "urgeId": "urge_001",
-    "coachMessage": "Deal có vẻ thơm, nhưng trigger \"flash sale\" đang kéo bạn đó. Đợi 24h rồi chốt tai nghe mới; 1.200.000đ nên phục vụ goal \"Tiết kiệm 20 triệu\" nha.",
-    "suggestedAction": "WAIT_24_HOURS",
+    "coachMessage": "Món này đang hấp dẫn vì giảm giá. Hãy tạm dừng, xem lại nhu cầu và so với mục tiêu tiết kiệm trước khi quyết định.",
+    "suggestedAction": "PAUSE_AND_REVIEW",
     "detectedTrigger": "flash_sale"
   },
   "debug": {
@@ -377,7 +393,7 @@ Request:
 
 ```json
 {
-  "userId": "mock-user",
+  "userId": "vmh-device-generated-id",
   "message": "Tôi muốn mua đồng hồ 1 triệu vì đang sale, có nên mua không?"
 }
 ```
@@ -399,8 +415,8 @@ Rules:
 - General finance questions should be answered simply and practically.
 - If the first Gemini output is invalid, the backend retries once with a repair prompt.
 - Successful responses include `debug.provider` with `gemini` and `debug.retryCount`.
-- Invalid Gemini output returns `502` with `error.code = "AI_RESPONSE_INVALID"`.
-- Gemini provider failures return `502` or `503` with `error.code = "AI_PROVIDER_ERROR"`.
+- Invalid Gemini output returns `502` with an `error.code` indicating an invalid AI response.
+- Gemini provider failures return `502` or `503` with an `error.code` indicating a provider failure.
 
 Response `200`:
 
@@ -409,7 +425,7 @@ Response `200`:
   "success": true,
   "message": "Coach chat response generated",
   "data": {
-    "reply": "Đồng hồ 1 triệu là khoản không nhỏ, nhất là nếu bạn đang có mục tiêu tiết kiệm. Nếu lý do chính là sale, hãy chờ 24 giờ rồi xem bạn còn muốn mua không. Nếu vẫn muốn mua, đặt trước một mức giá tối đa để tránh chốt vì cảm xúc.",
+    "reply": "Đồng hồ 1 triệu là khoản không nhỏ, nhất là nếu bạn đang có mục tiêu tiết kiệm. Nếu lý do chính là sale, hãy tạm dừng và xem món này có thật sự cần ngay không. Nếu vẫn muốn mua, đặt trước một mức giá tối đa để tránh chốt vì cảm xúc sale.",
     "suggestedQuestions": [
       "Nếu không mua món này thì tôi tiết kiệm được bao nhiêu?",
       "Có lựa chọn nào rẻ hơn không?",
@@ -463,7 +479,7 @@ Request:
 
 ```json
 {
-  "userId": "test-user-1",
+  "userId": "vmh-device-generated-id",
   "status": "DELAYED"
 }
 ```
@@ -558,3 +574,13 @@ Response `200`:
 ## Future / Post-demo: Reflections
 
 Reflection is not part of the current demo API. Do not implement `POST /api/reflections`, `GET /api/reflections`, recent reflection dashboard data, or reflection XP rewards for the demo.
+
+## Planned / Final MVP Milestone: Remote Push Notifications
+
+Remote push notifications are a planned final MVP milestone, not part of the current API. The following endpoint names are provisional and must not be implemented in this docs-only task:
+
+- `POST /api/notifications/register-device`
+- `PATCH /api/notifications/preferences/:userId`
+- `POST /api/notifications/test`
+
+An Expo push token or device token must be sent to the Express backend. The frontend must not hold backend notification credentials. The backend will be responsible for storing tokens and sending notifications when this milestone begins.

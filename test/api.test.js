@@ -131,6 +131,20 @@ const requestJson = async (baseUrl, path, options = {}) => {
   return { response, body };
 };
 
+const futureDate = () => new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+
+const validOnboardingPayload = (overrides = {}) => ({
+  userId: 'mock-user',
+  displayName: 'Minh',
+  monthlyBudget: 3000000,
+  mainGoal: 'save_money',
+  targetAmount: 20000000,
+  targetDate: futureDate(),
+  triggers: ['flash_sale'],
+  preferredTone: 'funny',
+  ...overrides,
+});
+
 let fakeSupabaseClient;
 
 test.beforeEach(() => {
@@ -172,15 +186,7 @@ test('profile endpoints create, read, and partially update a Supabase-backed pro
   try {
     const create = await requestJson(server.baseUrl, '/api/profile', {
       method: 'POST',
-      body: JSON.stringify({
-        userId: 'mock-user',
-        displayName: 'Minh',
-        monthlyBudget: 3000000,
-        currency: 'VND',
-        mainGoal: 'Tiết kiệm 20 triệu',
-        triggers: ['trà sữa', 'flash sale', 'shopee'],
-        preferredTone: 'funny',
-      }),
+      body: JSON.stringify(validOnboardingPayload()),
     });
 
     assert.equal(create.response.status, 201);
@@ -188,15 +194,15 @@ test('profile endpoints create, read, and partially update a Supabase-backed pro
     assert.equal(create.body.data.userId, 'mock-user');
     assert.equal(create.body.data.level, 1);
     assert.equal(create.body.data.xp, 0);
-    assert.equal(create.body.data.mainGoal, 'Tiết kiệm 20 triệu');
-    assert.deepEqual(create.body.data.triggers, ['trà sữa', 'flash sale', 'shopee']);
+    assert.equal(create.body.data.mainGoal, 'save_money');
+    assert.deepEqual(create.body.data.triggers, ['flash_sale']);
     assert.equal(create.body.data.preferredTone, 'funny');
 
     const read = await requestJson(server.baseUrl, '/api/profile/mock-user');
     assert.equal(read.response.status, 200);
     assert.equal(read.body.data.displayName, 'Minh');
-    assert.equal(read.body.data.mainGoal, 'Tiết kiệm 20 triệu');
-    assert.deepEqual(read.body.data.triggers, ['trà sữa', 'flash sale', 'shopee']);
+    assert.equal(read.body.data.mainGoal, 'save_money');
+    assert.deepEqual(read.body.data.triggers, ['flash_sale']);
     assert.equal(read.body.data.preferredTone, 'funny');
 
     const update = await requestJson(server.baseUrl, '/api/profile/mock-user', {
@@ -204,8 +210,8 @@ test('profile endpoints create, read, and partially update a Supabase-backed pro
       body: JSON.stringify({
         displayName: 'Minh Anh',
         monthlyBudget: 3500000,
-        mainGoal: 'Mua laptop không nợ',
-        triggers: ['stress', 'sale'],
+        mainGoal: 'reduce_impulse_shopping',
+        triggers: ['emotional_spending'],
         preferredTone: 'strict-but-kind',
       }),
     });
@@ -214,8 +220,8 @@ test('profile endpoints create, read, and partially update a Supabase-backed pro
     assert.equal(update.body.data.displayName, 'Minh Anh');
     assert.equal(update.body.data.monthlyBudget, 3500000);
     assert.equal(update.body.data.currency, 'VND');
-    assert.equal(update.body.data.mainGoal, 'Mua laptop không nợ');
-    assert.deepEqual(update.body.data.triggers, ['stress', 'sale']);
+    assert.equal(update.body.data.mainGoal, 'reduce_impulse_shopping');
+    assert.deepEqual(update.body.data.triggers, ['emotional_spending']);
     assert.equal(update.body.data.preferredTone, 'strict-but-kind');
   } finally {
     await server.close();
@@ -228,13 +234,7 @@ test('posting the same profile user updates profile fields without resetting use
   try {
     const first = await requestJson(server.baseUrl, '/api/profile', {
       method: 'POST',
-      body: JSON.stringify({
-        userId: 'mock-user',
-        displayName: 'Minh',
-        monthlyBudget: 3000000,
-        currency: 'VND',
-        mainGoal: 'Tiet kiem 20 trieu',
-      }),
+      body: JSON.stringify(validOnboardingPayload()),
     });
 
     assert.equal(first.response.status, 201);
@@ -249,19 +249,17 @@ test('posting the same profile user updates profile fields without resetting use
 
     const second = await requestJson(server.baseUrl, '/api/profile', {
       method: 'POST',
-      body: JSON.stringify({
-        userId: 'mock-user',
+      body: JSON.stringify(validOnboardingPayload({
         displayName: 'Minh Updated',
         monthlyBudget: 3500000,
-        currency: 'VND',
-        mainGoal: 'Mua laptop khong no',
+        mainGoal: 'reduce_impulse_shopping',
         preferredTone: 'gentle',
-      }),
+      })),
     });
 
     assert.equal(second.response.status, 201);
     assert.equal(second.body.data.displayName, 'Minh Updated');
-    assert.equal(second.body.data.mainGoal, 'Mua laptop khong no');
+    assert.equal(second.body.data.mainGoal, 'reduce_impulse_shopping');
     assert.deepEqual(fakeSupabaseClient.state.userProgress.get('mock-user'), {
       user_id: 'mock-user',
       xp: 77,
@@ -285,13 +283,7 @@ test('profile endpoint returns 404 for a missing user and 400 for invalid tone',
 
     const invalidTone = await requestJson(server.baseUrl, '/api/profile', {
       method: 'POST',
-      body: JSON.stringify({
-        userId: 'mock-user',
-        displayName: 'Minh',
-        monthlyBudget: 3000000,
-        mainGoal: 'Tiet kiem 20 trieu',
-        preferredTone: 'mean',
-      }),
+      body: JSON.stringify(validOnboardingPayload({ preferredTone: 'mean' })),
     });
 
     assert.equal(invalidTone.response.status, 400);
@@ -308,15 +300,7 @@ test('quick expense input records an expense and updates XP progression', async 
   try {
     await requestJson(server.baseUrl, '/api/profile', {
       method: 'POST',
-      body: JSON.stringify({
-        userId: 'mock-user',
-        displayName: 'Minh',
-        monthlyBudget: 3000000,
-        currency: 'VND',
-        mainGoal: 'Tiết kiệm 20 triệu',
-        triggers: ['trà sữa', 'flash sale', 'shopee'],
-        preferredTone: 'funny',
-      }),
+      body: JSON.stringify(validOnboardingPayload()),
     });
 
     const createdExpense = await requestJson(server.baseUrl, '/api/expenses/quick-input', {
@@ -349,15 +333,7 @@ test('dashboard returns profile, recent expenses, XP, and initial boss state', a
   try {
     await requestJson(server.baseUrl, '/api/profile', {
       method: 'POST',
-      body: JSON.stringify({
-        userId: 'mock-user',
-        displayName: 'Minh',
-        monthlyBudget: 3000000,
-        currency: 'VND',
-        mainGoal: 'Tiết kiệm 20 triệu',
-        triggers: ['trà sữa', 'flash sale', 'shopee'],
-        preferredTone: 'funny',
-      }),
+      body: JSON.stringify(validOnboardingPayload()),
     });
 
     await requestJson(server.baseUrl, '/api/expenses/quick-input', {
@@ -375,8 +351,8 @@ test('dashboard returns profile, recent expenses, XP, and initial boss state', a
     assert.equal(dashboard.body.data.profile.userId, 'mock-user');
     assert.equal(dashboard.body.data.profile.xp, 5);
     assert.equal(dashboard.body.data.profile.monthlySpent, 55000);
-    assert.equal(dashboard.body.data.profile.mainGoal, 'Tiết kiệm 20 triệu');
-    assert.deepEqual(dashboard.body.data.profile.triggers, ['trà sữa', 'flash sale', 'shopee']);
+    assert.equal(dashboard.body.data.profile.mainGoal, 'save_money');
+    assert.deepEqual(dashboard.body.data.profile.triggers, ['flash_sale']);
     assert.equal(dashboard.body.data.profile.preferredTone, 'funny');
     assert.equal(dashboard.body.data.boss.currentHp, 100);
     assert.equal(dashboard.body.data.boss.maxHp, 100);
@@ -394,13 +370,7 @@ test('challenge completion rewards XP, discipline, boss damage, and updates dash
   try {
     await requestJson(server.baseUrl, '/api/profile', {
       method: 'POST',
-      body: JSON.stringify({
-        userId: 'mock-user',
-        displayName: 'Minh',
-        monthlyBudget: 3000000,
-        currency: 'VND',
-        mainGoal: 'Tiet kiem 20 trieu',
-      }),
+      body: JSON.stringify(validOnboardingPayload()),
     });
 
     const challenges = await requestJson(server.baseUrl, '/api/challenges?userId=mock-user');
@@ -443,13 +413,7 @@ test('challenge completion cannot damage boss below zero or complete twice', asy
   try {
     await requestJson(server.baseUrl, '/api/profile', {
       method: 'POST',
-      body: JSON.stringify({
-        userId: 'mock-user',
-        displayName: 'Minh',
-        monthlyBudget: 3000000,
-        currency: 'VND',
-        mainGoal: 'Tiet kiem 20 trieu',
-      }),
+      body: JSON.stringify(validOnboardingPayload()),
     });
 
     const first = await requestJson(server.baseUrl, '/api/challenges/challenge-1/complete', {
@@ -476,15 +440,7 @@ test('anti-regret coach falls back to a short Vietnamese rule-based response wit
   try {
     await requestJson(server.baseUrl, '/api/profile', {
       method: 'POST',
-      body: JSON.stringify({
-        userId: 'mock-user',
-        displayName: 'Minh',
-        monthlyBudget: 3000000,
-        currency: 'VND',
-        mainGoal: 'Tiết kiệm 20 triệu',
-        triggers: ['trà sữa', 'flash sale', 'shopee'],
-        preferredTone: 'funny',
-      }),
+      body: JSON.stringify(validOnboardingPayload()),
     });
 
     const coach = await requestJson(server.baseUrl, '/api/coach/anti-regret', {
@@ -510,7 +466,7 @@ test('anti-regret coach falls back to a short Vietnamese rule-based response wit
     assert.equal(coach.body.data.detectedTrigger, 'flash_sale');
     assert.equal(coach.body.data.suggestedAction, 'WAIT_24_HOURS');
     assert.deepEqual(coach.body.debug, { provider: 'fallback' });
-    assert.match(coach.body.data.coachMessage, /Tiết kiệm 20 triệu/);
+    assert.match(coach.body.data.coachMessage, /save_money/);
     assert.match(coach.body.data.coachMessage, /tai nghe mới/);
     assert.ok(coach.body.data.coachMessage.length <= 180);
   } finally {
@@ -581,15 +537,7 @@ test('anti-regret coach preserves an explicit valid trigger and can expose Gemin
   try {
     await requestJson(server.baseUrl, '/api/profile', {
       method: 'POST',
-      body: JSON.stringify({
-        userId: 'mock-user',
-        displayName: 'Minh',
-        monthlyBudget: 3000000,
-        currency: 'VND',
-        mainGoal: 'Tiet kiem 20 trieu',
-        triggers: ['flash_sale'],
-        preferredTone: 'funny',
-      }),
+      body: JSON.stringify(validOnboardingPayload()),
     });
 
     const coach = await requestJson(server.baseUrl, '/api/coach/anti-regret', {
@@ -618,8 +566,8 @@ test('coach chat returns a validated Gemini reply, suggested questions, and retr
   const originalGenerate = geminiService.generateCoachChatReply;
   geminiService.generateCoachChatReply = async (context) => {
     assert.equal(context.userMessage, 'Tôi muốn mua đồng hồ 1 triệu vì đang sale, có nên mua không?');
-    assert.equal(context.mainGoal, 'Tiết kiệm 20 triệu');
-    assert.deepEqual(context.triggers, ['trà sữa', 'flash sale', 'shopee']);
+    assert.equal(context.mainGoal, 'save_money');
+    assert.deepEqual(context.triggers, ['flash_sale']);
     assert.equal(context.preferredTone, 'funny');
     assert.equal(context.monthlyBudget, 3000000);
     assert.equal(context.monthlySpent, 55000);
@@ -640,15 +588,7 @@ test('coach chat returns a validated Gemini reply, suggested questions, and retr
   try {
     await requestJson(server.baseUrl, '/api/profile', {
       method: 'POST',
-      body: JSON.stringify({
-        userId: 'mock-user',
-        displayName: 'Minh',
-        monthlyBudget: 3000000,
-        currency: 'VND',
-        mainGoal: 'Tiết kiệm 20 triệu',
-        triggers: ['trà sữa', 'flash sale', 'shopee'],
-        preferredTone: 'funny',
-      }),
+      body: JSON.stringify(validOnboardingPayload()),
     });
 
     await requestJson(server.baseUrl, '/api/expenses/quick-input', {
@@ -697,13 +637,7 @@ test('coach chat returns an AI provider error instead of a fallback when Gemini 
   try {
     await requestJson(server.baseUrl, '/api/profile', {
       method: 'POST',
-      body: JSON.stringify({
-        userId: 'mock-user',
-        displayName: 'Minh',
-        monthlyBudget: 3000000,
-        currency: 'VND',
-        mainGoal: 'Tiết kiệm 20 triệu',
-      }),
+      body: JSON.stringify(validOnboardingPayload()),
     });
 
     const coach = await requestJson(server.baseUrl, '/api/coach/chat', {
@@ -745,13 +679,7 @@ test('coach chat returns an invalid response error instead of a fallback when Ge
   try {
     await requestJson(server.baseUrl, '/api/profile', {
       method: 'POST',
-      body: JSON.stringify({
-        userId: 'mock-user',
-        displayName: 'Minh',
-        monthlyBudget: 3000000,
-        currency: 'VND',
-        mainGoal: 'Tiết kiệm 20 triệu',
-      }),
+      body: JSON.stringify(validOnboardingPayload()),
     });
 
     const coach = await requestJson(server.baseUrl, '/api/coach/chat', {
@@ -838,6 +766,71 @@ test('API validates bad profile and expense requests', async () => {
     assert.equal(invalidExpense.response.status, 422);
     assert.equal(invalidExpense.body.success, false);
     assert.ok(invalidExpense.body.errors);
+  } finally {
+    await server.close();
+  }
+});
+
+test('profile API enforces strict onboarding POST and partial PATCH validation', async () => {
+  const server = await startServer();
+
+  try {
+    const invalidPostPayloads = [
+      { userId: undefined },
+      { displayName: '   ' },
+      { mainGoal: 'Tiết kiệm tiền' },
+      { monthlyBudget: 0 },
+      { monthlyBudget: -1 },
+      { monthlyBudget: 1.5 },
+      { targetAmount: 0 },
+      { targetDate: '2026-02-31' },
+      { targetDate: new Date().toISOString().slice(0, 10) },
+      { triggers: [] },
+      { triggers: ['shopping'] },
+      { preferredTone: 'mean' },
+    ];
+
+    for (const override of invalidPostPayloads) {
+      const response = await requestJson(server.baseUrl, '/api/profile', {
+        method: 'POST',
+        body: JSON.stringify(validOnboardingPayload(override)),
+      });
+      assert.equal(response.response.status, 400, JSON.stringify(override));
+      assert.equal(response.body.success, false);
+      assert.ok(response.body.errors);
+    }
+
+    const created = await requestJson(server.baseUrl, '/api/profile', {
+      method: 'POST',
+      body: JSON.stringify(validOnboardingPayload({ triggers: ['friends', 'friends'] })),
+    });
+    assert.equal(created.response.status, 201);
+    assert.equal(created.body.data.preferredTone, 'funny');
+    assert.deepEqual(created.body.data.triggers, ['friends']);
+
+    const invalidPatchPayloads = [
+      {},
+      { userId: 'another-user' },
+      { monthlyBudget: 0 },
+      { targetDate: new Date().toISOString().slice(0, 10) },
+      { triggers: [] },
+    ];
+
+    for (const payload of invalidPatchPayloads) {
+      const response = await requestJson(server.baseUrl, '/api/profile/mock-user', {
+        method: 'PATCH',
+        body: JSON.stringify(payload),
+      });
+      assert.equal(response.response.status, 400, JSON.stringify(payload));
+    }
+
+    const patch = await requestJson(server.baseUrl, '/api/profile/mock-user', {
+      method: 'PATCH',
+      body: JSON.stringify({ monthlyBudget: 3500000 }),
+    });
+    assert.equal(patch.response.status, 200);
+    assert.equal(patch.body.data.monthlyBudget, 3500000);
+    assert.equal(patch.body.data.targetAmount, 20000000);
   } finally {
     await server.close();
   }

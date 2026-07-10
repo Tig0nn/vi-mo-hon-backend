@@ -118,7 +118,7 @@ Planned additions for later slices:
 
 - Keep AI calls on the backend only.
 - The frontend must never call Gemini directly.
-- Use `mock-user` for local development and assigned `test-user-*` IDs for external demo testing.
+- Use a stable device-generated `userId`, stored locally by the client, for local development and MVP testing.
 - Keep route handlers thin: routes -> controllers -> services.
 - Keep mock data isolated in `src/data/`.
 - Validate external input at API boundaries.
