@@ -427,7 +427,7 @@ const generateCoachChatReply = async (input, options = {}) => {
         if (repairError.code === "AI_RESPONSE_INVALID") {
           throw createAiError(
             "AI_RESPONSE_INVALID",
-            "Coach chÆ°a tráº£ lá»i á»•n Ä‘á»‹nh, thá»­ láº¡i nha.",
+            "Coach chưa trả lời ổn định, thử lại nha.",
             502,
             {
               retryCount: 1,

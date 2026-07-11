@@ -1,19 +1,20 @@
-const mockStore = require('../data/mockStore');
-const expenseRepository = require('../repositories/expense.repository');
-const { createHttpError } = require('../utils/httpError');
-const geminiService = require('./gemini.service');
+const mockStore = require("../data/mockStore");
+const expenseRepository = require("../repositories/expense.repository");
+const { createHttpError } = require("../utils/httpError");
+const geminiService = require("./gemini.service");
+const profileService = require("./profile.service");
 
-const GENERAL_TRIGGER = 'other';
+const GENERAL_TRIGGER = "other";
 
-const normalizeText = (value = '') =>
+const normalizeText = (value = "") =>
   String(value)
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .replace(/đ/g, 'd')
-    .replace(/Đ/g, 'D')
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/đ/g, "d")
+    .replace(/Đ/g, "D")
     .toLowerCase();
 
-const formatVnd = (amount) => `${Number(amount).toLocaleString('vi-VN')}đ`;
+const formatVnd = (amount) => `${Number(amount).toLocaleString("vi-VN")}đ`;
 
 const truncate = (value, maxLength) => {
   if (!value || value.length <= maxLength) {
@@ -29,36 +30,47 @@ const detectTrigger = (profile, input) => {
   }
 
   const haystack = normalizeText(`${input.itemName} ${input.reason}`);
-  const profileTrigger = (profile.triggers || []).find((trigger) => haystack.includes(normalizeText(trigger)));
+  const profileTrigger = (profile.triggers || []).find((trigger) =>
+    haystack.includes(normalizeText(trigger)),
+  );
 
   if (profileTrigger) {
     const normalizedProfileTrigger = normalizeText(profileTrigger)
-      .replace(/[^a-z0-9]+/g, '_')
-      .replace(/^_|_$/g, '');
+      .replace(/[^a-z0-9]+/g, "_")
+      .replace(/^_|_$/g, "");
 
-    if (['flash_sale', 'fomo', 'friends', 'emotional', 'self_reward', 'other'].includes(normalizedProfileTrigger)) {
+    if (
+      [
+        "flash_sale",
+        "fomo",
+        "friends",
+        "emotional",
+        "self_reward",
+        "other",
+      ].includes(normalizedProfileTrigger)
+    ) {
       return normalizedProfileTrigger;
     }
   }
 
   if (/(flash|sale|deal|discount|giam gia|shopee|voucher)/.test(haystack)) {
-    return 'flash_sale';
+    return "flash_sale";
   }
 
   if (/(stress|cang thang|chan|buon|met)/.test(haystack)) {
-    return 'emotional';
+    return "emotional";
   }
 
   if (/(tu thuong|self reward|reward|thuong ban than)/.test(haystack)) {
-    return 'self_reward';
+    return "self_reward";
   }
 
   if (/(ban be|ru|trend|fomo|so lo)/.test(haystack)) {
     if (/(ban be|ru)/.test(haystack)) {
-      return 'friends';
+      return "friends";
     }
 
-    return 'fomo';
+    return "fomo";
   }
 
   return GENERAL_TRIGGER;
@@ -66,29 +78,45 @@ const detectTrigger = (profile, input) => {
 
 const chooseSuggestedAction = (profile, input, detectedTrigger) => {
   const trigger = normalizeText(detectedTrigger);
-  const budgetShare = profile.monthlyBudget > 0 ? input.amount / profile.monthlyBudget : 0;
+  const budgetShare =
+    profile.monthlyBudget > 0 ? input.amount / profile.monthlyBudget : 0;
 
-  if (trigger.includes('flash_sale') || trigger.includes('sale') || trigger.includes('shopee') || budgetShare >= 0.1) {
-    return 'WAIT_24_HOURS';
+  if (
+    trigger.includes("flash_sale") ||
+    trigger.includes("sale") ||
+    trigger.includes("shopee") ||
+    budgetShare >= 0.1
+  ) {
+    return "WAIT_24_HOURS";
   }
 
-  if (trigger.includes('emotional')) {
-    return 'TAKE_10_MIN_BREATHER';
+  if (trigger.includes("emotional")) {
+    return "TAKE_10_MIN_BREATHER";
   }
 
-  if (trigger.includes('fomo') || trigger.includes('friends')) {
-    return 'ASK_IF_YOU_STILL_WANT_IT_TOMORROW';
+  if (trigger.includes("fomo") || trigger.includes("friends")) {
+    return "ASK_IF_YOU_STILL_WANT_IT_TOMORROW";
   }
 
-  return 'COMPARE_WITH_GOAL';
+  return "COMPARE_WITH_GOAL";
 };
 
-const buildCoachMessage = (profile, input, detectedTrigger, suggestedAction) => {
+const buildCoachMessage = (
+  profile,
+  input,
+  detectedTrigger,
+  suggestedAction,
+) => {
   const itemName = truncate(input.itemName, 32);
-  const goal = truncate(profile.mainGoal || 'mục tiêu tài chính của bạn', 44);
+  const goal = truncate(profile.mainGoal || "mục tiêu tài chính của bạn", 44);
   const amount = formatVnd(input.amount);
-  const triggerText = detectedTrigger === GENERAL_TRIGGER ? 'cơn muốn mua này' : `trigger "${detectedTrigger}"`;
-  const tone = normalizeText(profile.preferredTone || 'gentle').replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
+  const triggerText =
+    detectedTrigger === GENERAL_TRIGGER
+      ? "cơn muốn mua này"
+      : `trigger "${detectedTrigger}"`;
+  const tone = normalizeText(profile.preferredTone || "gentle")
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_|_$/g, "");
 
   const messages = {
     funny: `Deal có vẻ thơm, nhưng ${triggerText} đang kéo bạn đó. Đợi 24h rồi chốt ${itemName}; ${amount} nên phục vụ goal "${goal}" nha.`,
@@ -104,7 +132,8 @@ const buildCoachMessage = (profile, input, detectedTrigger, suggestedAction) => 
     WAIT_24_HOURS: messages.gentle,
   };
 
-  const message = messages[tone] || fallbackByAction[suggestedAction] || messages.gentle;
+  const message =
+    messages[tone] || fallbackByAction[suggestedAction] || messages.gentle;
   if (message.length <= 180) {
     return message;
   }
@@ -113,31 +142,33 @@ const buildCoachMessage = (profile, input, detectedTrigger, suggestedAction) => 
 };
 
 const buildRecentSpendingSummary = (recentExpenses, totalSpent) => {
-
   if (recentExpenses.length === 0) {
-    return 'No recent spending recorded.';
+    return "No recent spending recorded.";
   }
 
   const items = recentExpenses
     .map((expense) => {
-      const category = expense.category || 'uncategorized';
+      const category = expense.category || "uncategorized";
       return `${category}: ${formatVnd(expense.amount)}`;
     })
-    .join('; ');
+    .join("; ");
 
   return `Total recorded spending: ${formatVnd(totalSpent)}. Recent expenses: ${items}.`;
 };
 
 const toCoachExpense = (expense) => ({
-    amount: expense.amount,
-    category: expense.category || 'uncategorized',
-    occurredAt: expense.occurredAt,
-    text: expense.text || null,
-  });
+  amount: expense.amount,
+  category: expense.category || "uncategorized",
+  occurredAt: expense.occurredAt,
+  text: expense.text || null,
+});
 
 const getRecentSpendingContext = async (userId) => {
   try {
-    const recent = await expenseRepository.listExpensesByUserId(userId, { page: 1, pageSize: 5 });
+    const recent = await expenseRepository.listExpensesByUserId(userId, {
+      page: 1,
+      pageSize: 5,
+    });
     if (recent.pagination.totalItems > 0) {
       return {
         recentExpenses: recent.items.map(toCoachExpense),
@@ -145,10 +176,16 @@ const getRecentSpendingContext = async (userId) => {
       };
     }
   } catch (error) {
-    console.warn('[Supabase] coach spending context unavailable', getSafeGeminiErrorDetails(error));
+    console.warn(
+      "[Supabase] coach spending context unavailable",
+      getSafeGeminiErrorDetails(error),
+    );
   }
 
-  const mockExpenses = mockStore.listExpensesByUserId(userId, { page: 1, pageSize: 5 }).items;
+  const mockExpenses = mockStore.listExpensesByUserId(userId, {
+    page: 1,
+    pageSize: 5,
+  }).items;
   return {
     recentExpenses: mockExpenses.map(toCoachExpense),
     totalSpent: mockStore.sumExpensesByUserId(userId),
@@ -157,40 +194,47 @@ const getRecentSpendingContext = async (userId) => {
 
 const buildRecentExpenseSummaryForChat = (recentExpenses) => {
   if (!recentExpenses.length) {
-    return 'No recent spending recorded.';
+    return "No recent spending recorded.";
   }
 
   return recentExpenses
     .map((expense) => `${expense.category}: ${formatVnd(expense.amount)}`)
-    .join('; ');
+    .join("; ");
 };
 
 const getSafeGeminiErrorDetails = (error) => ({
-  name: error && error.name ? error.name : 'Error',
+  name: error && error.name ? error.name : "Error",
   status: error && error.status ? error.status : undefined,
   code: error && error.code ? error.code : undefined,
 });
 
 const createAntiRegretResponse = async (input, options = {}) => {
-  const profile = mockStore.findProfileByUserId(input.userId);
-  if (!profile) {
-    throw createHttpError(404, 'Profile not found');
-  }
+  const profile = await profileService.getProfile(input.userId);
 
   const detectedTrigger = detectTrigger(profile, input);
-  const suggestedAction = chooseSuggestedAction(profile, input, detectedTrigger);
+  const suggestedAction = chooseSuggestedAction(
+    profile,
+    input,
+    detectedTrigger,
+  );
   const urge = mockStore.createSpendingUrge({
     ...input,
     detectedTrigger,
     suggestedAction,
   });
-  const fallbackCoachMessage = buildCoachMessage(profile, input, detectedTrigger, suggestedAction);
+  const fallbackCoachMessage = buildCoachMessage(
+    profile,
+    input,
+    detectedTrigger,
+    suggestedAction,
+  );
   const generateCoachMessage =
-    options.generateCoachMessage || geminiService.generateAntiRegretCoachMessage;
+    options.generateCoachMessage ||
+    geminiService.generateAntiRegretCoachMessage;
   const spendingContext = await getRecentSpendingContext(input.userId);
 
   let coachMessage = fallbackCoachMessage;
-  let providerUsed = 'fallback';
+  let providerUsed = "fallback";
   try {
     const generatedMessage = await generateCoachMessage({
       mainGoal: profile.mainGoal,
@@ -201,16 +245,23 @@ const createAntiRegretResponse = async (input, options = {}) => {
       reason: input.reason,
       detectedTrigger,
       suggestedAction,
-      recentSpendingSummary: buildRecentSpendingSummary(spendingContext.recentExpenses, spendingContext.totalSpent),
+      recentSpendingSummary: buildRecentSpendingSummary(
+        spendingContext.recentExpenses,
+        spendingContext.totalSpent,
+      ),
     });
 
     if (generatedMessage) {
       coachMessage = generatedMessage;
-      providerUsed = 'gemini';
+      providerUsed = "gemini";
     }
   } catch (error) {
-    const message = error && error.message ? error.message : 'Unknown Gemini error';
-    console.warn(`[Gemini] failed: ${message}`, getSafeGeminiErrorDetails(error));
+    const message =
+      error && error.message ? error.message : "Unknown Gemini error";
+    console.warn(
+      `[Gemini] failed: ${message}`,
+      getSafeGeminiErrorDetails(error),
+    );
   }
 
   mockStore.updateSpendingUrgeCoachMessage(urge.id, coachMessage);
@@ -225,13 +276,11 @@ const createAntiRegretResponse = async (input, options = {}) => {
 };
 
 const createChatResponse = async (input, options = {}) => {
-  const profile = mockStore.findProfileByUserId(input.userId);
-  if (!profile) {
-    throw createHttpError(404, 'Profile not found');
-  }
+  const profile = await profileService.getProfile(input.userId);
 
   const spendingContext = await getRecentSpendingContext(input.userId);
-  const generateChatReply = options.generateChatReply || geminiService.generateCoachChatReply;
+  const generateChatReply =
+    options.generateChatReply || geminiService.generateCoachChatReply;
 
   const generatedReply = await generateChatReply({
     userMessage: input.message,
@@ -241,13 +290,15 @@ const createChatResponse = async (input, options = {}) => {
     monthlyBudget: profile.monthlyBudget,
     monthlySpent: spendingContext.totalSpent,
     recentExpenses: spendingContext.recentExpenses,
-    recentSpendingSummary: buildRecentExpenseSummaryForChat(spendingContext.recentExpenses),
+    recentSpendingSummary: buildRecentExpenseSummaryForChat(
+      spendingContext.recentExpenses,
+    ),
   });
 
   return {
     reply: generatedReply.reply,
     suggestedQuestions: generatedReply.suggestedQuestions,
-    providerUsed: 'gemini',
+    providerUsed: "gemini",
     retryCount: generatedReply.retryCount || 0,
   };
 };
