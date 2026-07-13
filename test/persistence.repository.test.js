@@ -25,7 +25,7 @@ test('game business logic does not hard-code seeded boss or challenge ids', () =
     .map((file) => fs.readFileSync(path.join(__dirname, '..', file), 'utf8'))
     .join('\n');
   const migration = fs.readFileSync(
-    path.join(__dirname, '..', 'supabase/migrations/20260713_ordered_boss_challenges.sql'),
+    path.join(__dirname, '..', 'supabase/migrations/20260713000000_ordered_boss_challenges.sql'),
     'utf8',
   );
   const rpcSource = migration.slice(migration.indexOf('DROP FUNCTION'));
@@ -36,7 +36,7 @@ test('game business logic does not hard-code seeded boss or challenge ids', () =
 
 test('challenge RPC hotfix qualifies identifiers that overlap RETURNS TABLE fields', () => {
   const hotfix = fs.readFileSync(
-    path.join(__dirname, '..', 'supabase/migrations/20260713_challenge_rpc_ambiguity_hotfix.sql'),
+    path.join(__dirname, '..', 'supabase/migrations/20260713120000_challenge_rpc_ambiguity_hotfix.sql'),
     'utf8',
   );
 
