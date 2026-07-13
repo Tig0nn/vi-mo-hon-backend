@@ -7,10 +7,15 @@ const clearSupabaseClientForTest = () => { if (process.env.NODE_ENV !== 'test') 
 
 const findBossState = async (userId) => {
   const { data, error } = await getClient().from('user_boss_progress')
-    .select('current_hp, status, bosses!inner(id, name, max_hp)').eq('user_id', userId).eq('boss_id', 'impulse-boss').maybeSingle();
+    .select('boss_id, current_hp, status, started_at, bosses!inner(id, name, max_hp)')
+    .eq('user_id', userId)
+    .order('started_at', { ascending: true })
+    .order('boss_id', { ascending: true });
   if (error) throw error;
-  if (!data) return null;
-  return { bossId: data.bosses.id, name: data.bosses.name, currentHp: Number(data.current_hp), maxHp: Number(data.bosses.max_hp) };
+  const rows = data || [];
+  const row = rows.find((item) => item.status === 'active') || rows[rows.length - 1];
+  if (!row) return null;
+  return { bossId: row.bosses.id, name: row.bosses.name, currentHp: Number(row.current_hp), maxHp: Number(row.bosses.max_hp), status: row.status };
 };
 
 module.exports = { clearSupabaseClientForTest, findBossState, setSupabaseClientForTest };

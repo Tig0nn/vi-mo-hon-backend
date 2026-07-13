@@ -1,15 +1,23 @@
 const createFakeSupabaseClient = () => {
+  const challengeRows = [
+    ['challenge-1', 'Không uống trà sữa hôm nay', 1, 5],
+    ['challenge-2', 'Ghi lại mọi khoản mua đồ uống', 2, 5],
+    ['challenge-3', 'Không mua đồ uống sau 20:00', 3, 5],
+    ['challenge-4', 'Chọn món rẻ hơn bình thường', 4, 5],
+    ['challenge-5', 'Giữ chi tiêu đồ uống dưới 30.000đ', 5, 8],
+  ];
   const state = {
     profiles: new Map(),
     userProgress: new Map(),
     expenses: [],
     userChallenges: new Map(),
     bossProgress: new Map(),
-    challenges: new Map([['challenge-1', {
-      id: 'challenge-1', title: 'Không uống trà sữa hôm nay', description: 'Skip bubble tea for today.',
-      reward_xp: 30, hp_damage: 20, discipline_reward: 5, difficulty: 'easy', linked_boss_id: 'impulse-boss', is_active: true,
-    }]]),
-    bosses: new Map([['impulse-boss', { id: 'impulse-boss', name: 'Impulse Boss', max_hp: 100 }]]),
+    challenges: new Map(challengeRows.map(([id, title, sequence_order, discipline_reward]) => [id, {
+      id, title, description: title, reward_xp: 30, hp_damage: 20, discipline_reward,
+      difficulty: 'easy', linked_boss_id: 'drink-boss', is_active: true, sequence_order,
+    }])),
+    bosses: new Map([['drink-boss', { id: 'drink-boss', name: 'Boss Trà Sữa', max_hp: 100 }]]),
+    businessDate: '2026-07-13',
   };
   const now = () => new Date().toISOString();
   const clone = (value) => JSON.parse(JSON.stringify(value));
@@ -17,8 +25,15 @@ const createFakeSupabaseClient = () => {
   const ensureGameState = (userId) => {
     if (!state.profiles.has(userId)) return 'profile_not_found';
     if (!state.userProgress.has(userId)) state.userProgress.set(userId, { user_id: userId, xp: 0, level: 1, discipline: 0, savings: 0, knowledge: 0, wealth: 0 });
-    if (!state.userChallenges.has(key(userId, 'challenge-1'))) state.userChallenges.set(key(userId, 'challenge-1'), { user_id: userId, challenge_id: 'challenge-1', status: 'active' });
-    if (!state.bossProgress.has(key(userId, 'impulse-boss'))) state.bossProgress.set(key(userId, 'impulse-boss'), { user_id: userId, boss_id: 'impulse-boss', current_hp: 100, status: 'active', updated_at: now() });
+    if (!state.bossProgress.has(key(userId, 'drink-boss'))) state.bossProgress.set(key(userId, 'drink-boss'), { user_id: userId, boss_id: 'drink-boss', current_hp: 100, status: 'active', started_at: now(), updated_at: now() });
+    const active = [...state.userChallenges.values()].find((row) => row.user_id === userId && row.status === 'active');
+    const completedToday = [...state.userChallenges.values()].some((row) => row.user_id === userId && row.status === 'completed' && row.completed_date === state.businessDate);
+    const bossProgress = state.bossProgress.get(key(userId, 'drink-boss'));
+    if (!active && !completedToday && bossProgress.status === 'active') {
+      const next = [...state.challenges.values()].find((challenge) => !state.userChallenges.has(key(userId, challenge.id)));
+      if (next) state.userChallenges.set(key(userId, next.id), { user_id: userId, challenge_id: next.id, status: 'active', assigned_date: state.businessDate });
+      else bossProgress.status = 'defeated';
+    }
     return 'success';
   };
 
@@ -36,8 +51,10 @@ const createFakeSupabaseClient = () => {
         .map((row) => ({ ...row, challenges: state.challenges.get(row.challenge_id) }));
     } else if (table === 'user_boss_progress') {
       rows = [...state.bossProgress.values()]
-        .filter((row) => (!filter.user_id || row.user_id === filter.user_id) && (!filter.boss_id || row.boss_id === filter.boss_id))
+        .filter((row) => (!filter.user_id || row.user_id === filter.user_id) && (!filter.boss_id || row.boss_id === filter.boss_id) && (!filter.status || row.status === filter.status))
         .map((row) => ({ ...row, bosses: state.bosses.get(row.boss_id) }));
+    } else if (table === 'challenges') {
+      rows = [...state.challenges.values()].filter((row) => Object.entries(filter).every(([field, value]) => row[field] === value));
     }
     for (const order of orders.slice().reverse()) rows.sort((a, b) => {
       const left = a[order.column]; const right = b[order.column];
@@ -112,10 +129,10 @@ const createFakeSupabaseClient = () => {
         if (!userChallenge || userChallenge.status !== 'active') return { data: [{ outcome: userChallenge && userChallenge.status === 'completed' ? 'challenge_already_completed' : 'challenge_not_active' }], error: null };
         const boss = state.bosses.get(challenge.linked_boss_id); const bossProgress = state.bossProgress.get(key(args.p_user_id, challenge.linked_boss_id));
         if (!boss || !bossProgress) return { data: [{ outcome: 'boss_progress_not_found' }], error: null };
-        userChallenge.status = 'completed'; userChallenge.completed_at = now();
+        userChallenge.status = 'completed'; userChallenge.completed_at = now(); userChallenge.completed_date = state.businessDate;
         const progress = state.userProgress.get(args.p_user_id); progress.xp += challenge.reward_xp; progress.level = Math.floor(progress.xp / 100) + 1; progress.discipline += challenge.discipline_reward; progress.wealth = progress.discipline + progress.savings + progress.knowledge;
         bossProgress.current_hp = Math.max(0, bossProgress.current_hp - challenge.hp_damage); if (bossProgress.current_hp === 0) bossProgress.status = 'defeated';
-        return { data: [{ outcome: 'success', challenge_id: challenge.id, title: challenge.title, description: challenge.description, reward_xp: challenge.reward_xp, hp_damage: challenge.hp_damage, discipline_reward: challenge.discipline_reward, difficulty: challenge.difficulty, challenge_status: 'completed', xp: progress.xp, level: progress.level, discipline: progress.discipline, boss_id: boss.id, boss_name: boss.name, current_hp: bossProgress.current_hp, max_hp: boss.max_hp, boss_status: bossProgress.status }], error: null };
+        return { data: [{ outcome: 'success', challenge_id: challenge.id, title: challenge.title, description: challenge.description, reward_xp: challenge.reward_xp, hp_damage: challenge.hp_damage, discipline_reward: challenge.discipline_reward, difficulty: challenge.difficulty, sequence_order: challenge.sequence_order, assigned_date: userChallenge.assigned_date, challenge_status: 'completed', xp: progress.xp, level: progress.level, discipline: progress.discipline, boss_id: boss.id, boss_name: boss.name, current_hp: bossProgress.current_hp, max_hp: boss.max_hp, boss_status: bossProgress.status }], error: null };
       }
       return { data: null, error: { message: `Unknown RPC ${name}` } };
     },

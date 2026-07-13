@@ -40,7 +40,7 @@ The current repository does not select an `id`, `wealth`, `created_at`, or `upda
 
 ## Expense and game persistence
 
-Run `supabase/migrations/20260710_expense_challenge_persistence.sql` once through the Supabase SQL Editor before using this slice against the live project. It is idempotent and never drops, truncates, or deletes data.
+Run `supabase/migrations/20260710_expense_challenge_persistence.sql`, then `supabase/migrations/20260713_ordered_boss_challenges.sql` through the Supabase SQL Editor. The second migration preserves the existing composite primary key on `user_challenges` and does not drop tables.
 
 The migration adds only these columns when absent:
 
@@ -57,7 +57,11 @@ It reuses these existing tables:
 | `bosses` | Seeded `impulse-boss` definition. |
 | `user_boss_progress` | Per-user boss HP/status, keyed by `(user_id, boss_id)`. |
 
-`ensure_default_game_state_v1(text)` lazily creates missing progress, challenge, and boss rows without resetting existing state. `record_expense_and_add_xp_v1(...)` inserts one expense and awards XP atomically. `complete_challenge_v1(text, text)` locks the user challenge row and atomically marks completion, awards progress, and damages the linked boss. All three functions use a safe `search_path`; execution is revoked from `PUBLIC`, `anon`, and `authenticated`, then granted only to `service_role`.
+Ordered boss challenges add `challenges.sequence_order integer not null` (positive and unique per linked boss), `user_challenges.assigned_date date not null` in the `Asia/Ho_Chi_Minh` business timezone, and `user_boss_progress.started_at timestamptz not null default now()`. A partial unique index permits at most one active challenge per user.
+
+`ensure_default_game_state_v1` selects the active boss by `started_at ASC, boss_id ASC`, keeps unfinished challenges active, and assigns the lowest uncompleted sequence only after a new business day. `complete_challenge_v1` locks and updates challenge, XP, discipline, and boss HP atomically. Both RPCs accept an optional internal business date for deterministic tests; production defaults to `Asia/Ho_Chi_Minh`.
+
+`ensure_default_game_state_v1(text, date)` lazily creates missing progress, challenge, and boss rows without resetting existing state. `record_expense_and_add_xp_v1(...)` inserts one expense and awards XP atomically. `complete_challenge_v1(text, text, date)` locks the user's game state and atomically marks completion, awards progress, and damages the linked boss. All three functions use a safe `search_path`; execution is revoked from `PUBLIC`, `anon`, and `authenticated`, then granted only to `service_role`.
 
 Dashboard monthly spending uses UTC calendar-month boundaries (`[UTC month start, next UTC month start)`) consistently.
 

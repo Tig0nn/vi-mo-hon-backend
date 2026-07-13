@@ -46,7 +46,7 @@ npm start
 
 Profiles, progress, expenses, challenges, boss progress, and dashboard reads reuse the existing Supabase project and tables. No `pg`, `DATABASE_URL`, new database, or new Supabase project is required.
 
-Before exercising expense, challenge, or dashboard persistence against Supabase, run [20260710_expense_challenge_persistence.sql](supabase/migrations/20260710_expense_challenge_persistence.sql) in the Supabase SQL Editor. It only adds `challenges.difficulty` and `challenges.discipline_reward` when missing, safely seeds the MVP boss/challenge, and creates backend-only RPC functions for atomic writes.
+Before exercising expense, challenge, or dashboard persistence against Supabase, run [20260710_expense_challenge_persistence.sql](supabase/migrations/20260710_expense_challenge_persistence.sql), followed by [20260713_ordered_boss_challenges.sql](supabase/migrations/20260713_ordered_boss_challenges.sql), in the Supabase SQL Editor. The second migration adds ordered one-at-a-time boss challenges and updates the backend-only atomic RPCs.
 
 The backend still requires only:
 

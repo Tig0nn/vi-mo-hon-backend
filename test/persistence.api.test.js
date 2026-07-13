@@ -50,6 +50,19 @@ test('expense listing uses persisted rows, newest-first ordering, and exact pagi
   } finally { await server.close(); }
 });
 
+test('boss lookup deterministically selects the earliest started active boss', async () => {
+  await profileRepository.upsertProfile(onboarding());
+  await challengeRepository.ensureDefaultGameState('persisted-user');
+  fakeClient.state.bosses.set('earlier-boss', { id: 'earlier-boss', name: 'Earlier Boss', max_hp: 50 });
+  fakeClient.state.bossProgress.set('persisted-user:earlier-boss', {
+    user_id: 'persisted-user', boss_id: 'earlier-boss', current_hp: 50,
+    status: 'active', started_at: '2020-01-01T00:00:00.000Z', updated_at: '2020-01-01T00:00:00.000Z',
+  });
+
+  const boss = await bossRepository.findBossState('persisted-user');
+  assert.equal(boss.bossId, 'earlier-boss');
+});
+
 test('expense XP recalculates level and database failures are not reported as success', async () => {
   const server = await startServer();
   try {
@@ -70,7 +83,7 @@ test('concurrent completion grants rewards once, clamps boss HP, and dashboard h
   const server = await startServer();
   try {
     await requestJson(server.baseUrl, '/api/profile', { method: 'POST', body: JSON.stringify(onboarding()) });
-    fakeClient.state.bossProgress.get('persisted-user:impulse-boss').current_hp = 10;
+    fakeClient.state.bossProgress.get('persisted-user:drink-boss').current_hp = 10;
     const requests = await Promise.all([
       requestJson(server.baseUrl, '/api/challenges/challenge-1/complete', { method: 'POST', body: JSON.stringify({ userId: 'persisted-user' }) }),
       requestJson(server.baseUrl, '/api/challenges/challenge-1/complete', { method: 'POST', body: JSON.stringify({ userId: 'persisted-user' }) }),
@@ -78,8 +91,8 @@ test('concurrent completion grants rewards once, clamps boss HP, and dashboard h
     assert.deepEqual(requests.map((result) => result.response.status).sort(), [200, 409]);
     assert.equal(fakeClient.state.userProgress.get('persisted-user').xp, 30);
     assert.equal(fakeClient.state.userProgress.get('persisted-user').discipline, 5);
-    assert.equal(fakeClient.state.bossProgress.get('persisted-user:impulse-boss').current_hp, 0);
-    assert.equal(fakeClient.state.bossProgress.get('persisted-user:impulse-boss').status, 'defeated');
+    assert.equal(fakeClient.state.bossProgress.get('persisted-user:drink-boss').current_hp, 0);
+    assert.equal(fakeClient.state.bossProgress.get('persisted-user:drink-boss').status, 'defeated');
     const dashboard = await requestJson(server.baseUrl, '/api/dashboard/persisted-user');
     assert.equal(dashboard.response.status, 200);
     assert.equal(Object.hasOwn(dashboard.body.data, 'recentReflections'), false);
@@ -98,6 +111,67 @@ test('reposting onboarding preserves persisted progress, completed challenge sta
     assert.equal(repeated.response.status, 201);
     assert.deepEqual(fakeClient.state.userProgress.get('persisted-user'), { user_id: 'persisted-user', xp: 30, level: 1, discipline: 5, savings: 100000, knowledge: 7, wealth: 5 });
     assert.equal(fakeClient.state.userChallenges.get('persisted-user:challenge-1').status, 'completed');
-    assert.equal(fakeClient.state.bossProgress.get('persisted-user:impulse-boss').current_hp, 80);
+    assert.equal(fakeClient.state.bossProgress.get('persisted-user:drink-boss').current_hp, 80);
+  } finally { await server.close(); }
+});
+
+test('dashboard keeps activeChallenges compatibility and reports next-day availability after completion', async () => {
+  const server = await startServer();
+  try {
+    await requestJson(server.baseUrl, '/api/profile', { method: 'POST', body: JSON.stringify(onboarding()) });
+    await requestJson(server.baseUrl, '/api/challenges/challenge-1/complete', { method: 'POST', body: JSON.stringify({ userId: 'persisted-user' }) });
+
+    const dashboard = await requestJson(server.baseUrl, '/api/dashboard/persisted-user');
+    assert.equal(dashboard.response.status, 200);
+    assert.deepEqual(dashboard.body.data.activeChallenges, []);
+    assert.equal(dashboard.body.data.todayChallenge, null);
+    assert.equal(dashboard.body.data.nextChallengeAvailableOn, '2026-07-14');
+    assert.equal(dashboard.body.data.challengeMessage, 'Đã hoàn thành thử thách hôm nay');
+    assert.equal(dashboard.body.data.boss.completedChallenges, 1);
+    assert.equal(dashboard.body.data.boss.totalChallenges, 5);
+  } finally { await server.close(); }
+});
+
+test('ordered challenges unlock on following days, persist while unfinished, and defeat the boss after the last one', async () => {
+  const server = await startServer();
+  try {
+    await requestJson(server.baseUrl, '/api/profile', { method: 'POST', body: JSON.stringify(onboarding()) });
+
+    const firstDashboard = await requestJson(server.baseUrl, '/api/dashboard/persisted-user');
+    assert.equal(firstDashboard.body.data.todayChallenge.id, 'challenge-1');
+    assert.equal(firstDashboard.body.data.todayChallenge.sequenceOrder, 1);
+    assert.equal(firstDashboard.body.data.todayChallenge.totalChallenges, 5);
+    assert.equal(firstDashboard.body.data.activeChallenges.length, 1);
+
+    fakeClient.state.businessDate = '2026-07-14';
+    const stillActive = await requestJson(server.baseUrl, '/api/challenges?userId=persisted-user');
+    assert.deepEqual(stillActive.body.data.items.map((item) => item.id), ['challenge-1']);
+
+    for (let sequence = 1; sequence <= 5; sequence += 1) {
+      const completion = await requestJson(server.baseUrl, `/api/challenges/challenge-${sequence}/complete`, { method: 'POST', body: JSON.stringify({ userId: 'persisted-user' }) });
+      assert.equal(completion.response.status, 200);
+      assert.equal(completion.body.data.progression.xpGained, 30);
+      assert.equal(completion.body.data.progression.disciplineGained, sequence === 5 ? 8 : 5);
+      assert.equal(completion.body.data.boss.currentHp, 100 - (sequence * 20));
+
+      const sameDay = await requestJson(server.baseUrl, '/api/challenges?userId=persisted-user');
+      assert.deepEqual(sameDay.body.data.items, []);
+      if (sequence < 5) {
+        fakeClient.state.businessDate = `2026-07-${14 + sequence}`;
+        const nextDay = await requestJson(server.baseUrl, '/api/challenges?userId=persisted-user');
+        assert.deepEqual(nextDay.body.data.items.map((item) => item.id), [`challenge-${sequence + 1}`]);
+        assert.equal(nextDay.body.data.items.length, 1);
+      }
+    }
+
+    assert.equal(fakeClient.state.userProgress.get('persisted-user').xp, 150);
+    assert.equal(fakeClient.state.userProgress.get('persisted-user').discipline, 28);
+    assert.equal(fakeClient.state.bossProgress.get('persisted-user:drink-boss').current_hp, 0);
+    const defeated = await requestJson(server.baseUrl, '/api/dashboard/persisted-user');
+    assert.equal(defeated.body.data.boss.status, 'defeated');
+    assert.equal(defeated.body.data.boss.completedChallenges, 5);
+    assert.equal(defeated.body.data.boss.totalChallenges, 5);
+    assert.equal(defeated.body.data.todayChallenge, null);
+    assert.equal(defeated.body.data.challengeMessage, 'Bạn đã đánh bại boss này');
   } finally { await server.close(); }
 });

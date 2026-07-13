@@ -25,12 +25,21 @@ const getDashboard = async (userId) => {
       challengeRepository.listActiveChallenges(userId),
     ]);
     if (!boss) throw createHttpError(500, 'Database error');
+    const stats = await challengeRepository.getBossChallengeStats(userId, boss.bossId);
+    const todayChallenge = activeChallenges[0] ? { ...activeChallenges[0], totalChallenges: stats.totalChallenges } : null;
+    const businessDate = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Ho_Chi_Minh' });
+    const completedDate = stats.lastCompletedAt && new Date(stats.lastCompletedAt).toLocaleDateString('en-CA', { timeZone: 'Asia/Ho_Chi_Minh' });
+    const completedToday = !todayChallenge && boss.status !== 'defeated' && completedDate === businessDate;
+    const tomorrow = new Date(Date.now() + 86400000).toLocaleDateString('en-CA', { timeZone: 'Asia/Ho_Chi_Minh' });
 
     return {
       profile: { userId: profile.userId, displayName: profile.displayName, level: profile.level, xp: profile.xp, discipline: profile.discipline || 0, monthlyBudget: profile.monthlyBudget, monthlySpent, mainGoal: profile.mainGoal, triggers: profile.triggers || [], preferredTone: profile.preferredTone },
-      boss,
+      boss: { ...boss, completedChallenges: stats.completedChallenges, totalChallenges: stats.totalChallenges },
       recentExpenses: recentExpensePage.items,
       activeChallenges,
+      todayChallenge,
+      nextChallengeAvailableOn: completedToday ? tomorrow : null,
+      challengeMessage: boss.status === 'defeated' ? 'Bạn đã đánh bại boss này' : (completedToday ? 'Đã hoàn thành thử thách hôm nay' : null),
     };
   } catch (error) {
     if (error.status) throw error;

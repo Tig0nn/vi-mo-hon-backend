@@ -11,6 +11,14 @@ const state = {
   },
 };
 
+// Legacy mock seed fixtures. Persistent game logic discovers active rows from Supabase.
+const bossTemplate = {
+  bossId: 'impulse-boss',
+  name: 'Impulse Boss',
+  currentHp: 100,
+  maxHp: 100,
+};
+
 const challengeTemplates = [
   {
     id: 'challenge-1',
@@ -211,12 +219,7 @@ const getBossState = (userId) => {
     return clone(existingBoss);
   }
 
-  const boss = {
-    bossId: 'impulse-boss',
-    name: 'Impulse Boss',
-    currentHp: 100,
-    maxHp: 100,
-  };
+  const boss = { ...bossTemplate };
 
   state.bossStates.set(userId, boss);
   return clone(boss);

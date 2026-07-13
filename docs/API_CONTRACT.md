@@ -294,6 +294,8 @@ Response `200`:
 
 Dashboard data is Supabase-backed: profile/progress, current UTC-month expenses, up to five newest expenses, user boss progress, and active user challenges. It contains no Reflection data.
 
+`activeChallenges` remains in the response for backward compatibility. At most one item is active. `todayChallenge` is the same active challenge with sequence metadata. After a challenge is completed, the next challenge is not assigned until the following `Asia/Ho_Chi_Minh` business day.
+
 ### `GET /api/dashboard/:userId`
 
 Returns the main home/dashboard state for the mobile app. The demo dashboard does not include recent reflections.
@@ -319,10 +321,28 @@ Response `200`:
     },
     "boss": {
       "bossId": "impulse-boss",
-      "name": "Impulse Boss",
-      "currentHp": 100,
-      "maxHp": 100
+      "name": "Boss Trà Sữa",
+      "currentHp": 80,
+      "maxHp": 100,
+      "status": "active",
+      "completedChallenges": 1,
+      "totalChallenges": 5
     },
+    "todayChallenge": {
+      "id": "challenge-2",
+      "title": "Ghi lại mọi khoản mua đồ uống",
+      "description": "Ghi lại mọi khoản tiền dùng để mua đồ uống.",
+      "rewardXp": 30,
+      "bossDamage": 20,
+      "disciplineReward": 5,
+      "difficulty": "easy",
+      "sequenceOrder": 2,
+      "assignedDate": "2026-07-14",
+      "status": "active",
+      "totalChallenges": 5
+    },
+    "nextChallengeAvailableOn": null,
+    "challengeMessage": null,
     "recentExpenses": [],
     "activeChallenges": [
       {
@@ -338,6 +358,18 @@ Response `200`:
   }
 }
 ```
+
+When today's challenge has been completed and the boss is still active, dashboard returns:
+
+```json
+{
+  "todayChallenge": null,
+  "nextChallengeAvailableOn": "2026-07-14",
+  "challengeMessage": "Đã hoàn thành thử thách hôm nay"
+}
+```
+
+When the boss is defeated, dashboard returns `todayChallenge: null`, `nextChallengeAvailableOn: null`, and `challengeMessage: "Bạn đã đánh bại boss này"`.
 
 ## Anti-Regret Coach
 
@@ -508,7 +540,7 @@ Active challenges and completion results are persisted. Completion is an atomic 
 
 ### `GET /api/challenges?userId=mock-user`
 
-Lists active challenges.
+Lists the user's single active challenge. An unfinished challenge remains active across business days. Items include `sequenceOrder`, `assignedDate`, and `disciplineReward`; the existing fields remain unchanged.
 
 Response `200`:
 
@@ -524,7 +556,10 @@ Response `200`:
         "description": "Skip bubble tea for today.",
         "rewardXp": 30,
         "bossDamage": 20,
+        "disciplineReward": 5,
         "difficulty": "easy",
+        "sequenceOrder": 1,
+        "assignedDate": "2026-07-13",
         "status": "active"
       }
     ]
@@ -557,7 +592,10 @@ Response `200`:
       "description": "Skip bubble tea for today.",
       "rewardXp": 30,
       "bossDamage": 20,
+      "disciplineReward": 5,
       "difficulty": "easy",
+      "sequenceOrder": 1,
+      "assignedDate": "2026-07-13",
       "status": "completed"
     },
     "progression": {

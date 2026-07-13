@@ -1,10 +1,7 @@
-const mockStore = require('../data/mockStore');
+const bossRepository = require('../repositories/boss.repository');
 
-const getBossState = (userId) => mockStore.getBossState(userId);
-
-const damageBoss = (userId, damage) => mockStore.damageBoss(userId, damage);
+const getBossState = (userId) => bossRepository.findBossState(userId);
 
 module.exports = {
-  damageBoss,
   getBossState,
 };
