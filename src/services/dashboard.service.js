@@ -33,7 +33,7 @@ const getDashboard = async (userId) => {
     const tomorrow = new Date(Date.now() + 86400000).toLocaleDateString('en-CA', { timeZone: 'Asia/Ho_Chi_Minh' });
 
     return {
-      profile: { userId: profile.userId, displayName: profile.displayName, level: profile.level, xp: profile.xp, discipline: profile.discipline || 0, monthlyBudget: profile.monthlyBudget, monthlySpent, mainGoal: profile.mainGoal, triggers: profile.triggers || [], preferredTone: profile.preferredTone },
+      profile: { userId: profile.userId, displayName: profile.displayName, level: profile.level, xp: profile.xp, discipline: profile.discipline || 0, savings: profile.savings || 0, knowledge: profile.knowledge || 0, wealth: profile.wealth || 0, monthlyBudget: profile.monthlyBudget, monthlySpent, mainGoal: profile.mainGoal, triggers: profile.triggers || [], preferredTone: profile.preferredTone },
       boss: { ...boss, completedChallenges: stats.completedChallenges, totalChallenges: stats.totalChallenges },
       recentExpenses: recentExpensePage.items,
       activeChallenges,

@@ -83,7 +83,7 @@ test('concurrent completion grants rewards once, clamps boss HP, and dashboard h
   const server = await startServer();
   try {
     await requestJson(server.baseUrl, '/api/profile', { method: 'POST', body: JSON.stringify(onboarding()) });
-    fakeClient.state.bossProgress.get('persisted-user:drink-boss').current_hp = 10;
+    fakeClient.state.bossProgress.get('persisted-user:bubble-tea-monster').current_hp = 10;
     const requests = await Promise.all([
       requestJson(server.baseUrl, '/api/challenges/challenge-1/complete', { method: 'POST', body: JSON.stringify({ userId: 'persisted-user' }) }),
       requestJson(server.baseUrl, '/api/challenges/challenge-1/complete', { method: 'POST', body: JSON.stringify({ userId: 'persisted-user' }) }),
@@ -91,8 +91,8 @@ test('concurrent completion grants rewards once, clamps boss HP, and dashboard h
     assert.deepEqual(requests.map((result) => result.response.status).sort(), [200, 409]);
     assert.equal(fakeClient.state.userProgress.get('persisted-user').xp, 30);
     assert.equal(fakeClient.state.userProgress.get('persisted-user').discipline, 5);
-    assert.equal(fakeClient.state.bossProgress.get('persisted-user:drink-boss').current_hp, 0);
-    assert.equal(fakeClient.state.bossProgress.get('persisted-user:drink-boss').status, 'defeated');
+    assert.equal(fakeClient.state.bossProgress.get('persisted-user:bubble-tea-monster').current_hp, 0);
+    assert.equal(fakeClient.state.bossProgress.get('persisted-user:bubble-tea-monster').status, 'defeated');
     const dashboard = await requestJson(server.baseUrl, '/api/dashboard/persisted-user');
     assert.equal(dashboard.response.status, 200);
     assert.equal(Object.hasOwn(dashboard.body.data, 'recentReflections'), false);
@@ -111,7 +111,7 @@ test('reposting onboarding preserves persisted progress, completed challenge sta
     assert.equal(repeated.response.status, 201);
     assert.deepEqual(fakeClient.state.userProgress.get('persisted-user'), { user_id: 'persisted-user', xp: 30, level: 1, discipline: 5, savings: 100000, knowledge: 7, wealth: 5 });
     assert.equal(fakeClient.state.userChallenges.get('persisted-user:challenge-1').status, 'completed');
-    assert.equal(fakeClient.state.bossProgress.get('persisted-user:drink-boss').current_hp, 80);
+    assert.equal(fakeClient.state.bossProgress.get('persisted-user:bubble-tea-monster').current_hp, 80);
   } finally { await server.close(); }
 });
 
@@ -166,7 +166,7 @@ test('ordered challenges unlock on following days, persist while unfinished, and
 
     assert.equal(fakeClient.state.userProgress.get('persisted-user').xp, 150);
     assert.equal(fakeClient.state.userProgress.get('persisted-user').discipline, 28);
-    assert.equal(fakeClient.state.bossProgress.get('persisted-user:drink-boss').current_hp, 0);
+    assert.equal(fakeClient.state.bossProgress.get('persisted-user:bubble-tea-monster').current_hp, 0);
     const defeated = await requestJson(server.baseUrl, '/api/dashboard/persisted-user');
     assert.equal(defeated.body.data.boss.status, 'defeated');
     assert.equal(defeated.body.data.boss.completedChallenges, 5);

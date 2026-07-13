@@ -46,7 +46,7 @@ npm start
 
 Profiles, progress, expenses, challenges, boss progress, and dashboard reads reuse the existing Supabase project and tables. No `pg`, `DATABASE_URL`, new database, or new Supabase project is required.
 
-Before exercising expense, challenge, or dashboard persistence against Supabase, run [20260710_expense_challenge_persistence.sql](supabase/migrations/20260710_expense_challenge_persistence.sql), [20260713_ordered_boss_challenges.sql](supabase/migrations/20260713_ordered_boss_challenges.sql), then [20260713_challenge_rpc_ambiguity_hotfix.sql](supabase/migrations/20260713_challenge_rpc_ambiguity_hotfix.sql) in the Supabase SQL Editor. The ordered-challenge migration adds one-at-a-time boss challenges; the hotfix qualifies overlapping PL/pgSQL identifiers in the backend-only atomic RPCs.
+Before exercising expense, challenge, dashboard, or financial-lesson persistence against Supabase, run [20260710_expense_challenge_persistence.sql](supabase/migrations/20260710_expense_challenge_persistence.sql), [20260713000000_ordered_boss_challenges.sql](supabase/migrations/20260713000000_ordered_boss_challenges.sql), [20260713120000_challenge_rpc_ambiguity_hotfix.sql](supabase/migrations/20260713120000_challenge_rpc_ambiguity_hotfix.sql), [20260713150000_financial_lessons.sql](supabase/migrations/20260713150000_financial_lessons.sql), then [20260713180000_canonicalize_bubble_tea_boss.sql](supabase/migrations/20260713180000_canonicalize_bubble_tea_boss.sql) in the Supabase SQL Editor. The final hotfix transaction canonicalizes the Bubble Tea boss without changing its production `max_hp` or resetting user progress. Do not expose Supabase credentials to the client.
 
 The backend still requires only:
 
@@ -74,6 +74,8 @@ POST /api/expenses/quick-input
 GET /api/expenses?userId=mock-user&page=1&pageSize=20
 GET /api/challenges?userId=mock-user
 POST /api/challenges/:challengeId/complete
+GET /api/lessons?userId=mock-user&bossId=bubble-tea-monster
+POST /api/lessons/:lessonId/complete
 POST /api/coach/anti-regret
 POST /api/coach/chat
 GET /api/dashboard/:userId

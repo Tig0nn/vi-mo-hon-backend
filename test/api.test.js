@@ -419,6 +419,7 @@ test("dashboard returns profile, recent expenses, XP, and initial boss state", a
     assert.equal(dashboard.body.data.profile.mainGoal, "save_money");
     assert.deepEqual(dashboard.body.data.profile.triggers, ["flash_sale"]);
     assert.equal(dashboard.body.data.profile.preferredTone, "funny");
+    assert.equal(dashboard.body.data.boss.bossId, "bubble-tea-monster");
     assert.equal(dashboard.body.data.boss.currentHp, 100);
     assert.equal(dashboard.body.data.boss.maxHp, 100);
     assert.equal(dashboard.body.data.recentExpenses.length, 1);
@@ -465,6 +466,7 @@ test("challenge completion rewards XP, discipline, boss damage, and updates dash
     assert.equal(completion.body.data.progression.totalXp, 30);
     assert.equal(completion.body.data.progression.disciplineGained, 5);
     assert.equal(completion.body.data.progression.discipline, 5);
+    assert.equal(completion.body.data.boss.bossId, "bubble-tea-monster");
     assert.equal(completion.body.data.boss.currentHp, 80);
     assert.equal(completion.body.data.boss.maxHp, 100);
 
@@ -475,6 +477,7 @@ test("challenge completion rewards XP, discipline, boss damage, and updates dash
     assert.equal(dashboard.response.status, 200);
     assert.equal(dashboard.body.data.profile.xp, 30);
     assert.equal(dashboard.body.data.profile.discipline, 5);
+    assert.equal(dashboard.body.data.boss.bossId, "bubble-tea-monster");
     assert.equal(dashboard.body.data.boss.currentHp, 80);
     assert.deepEqual(dashboard.body.data.activeChallenges, []);
   } finally {

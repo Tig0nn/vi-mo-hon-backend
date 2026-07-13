@@ -2,7 +2,7 @@
 
 This document defines the demo MVP REST contract. Keep this file updated whenever endpoint behavior changes.
 
-The current demo API focuses on quick expense input, AI Anti-Regret Coach, profile personalization, local reminders, challenges, XP/stats, boss progress, and dashboard. Reflection is a future/post-demo feature only. AI provider calls are backend-only; clients must never call Gemini directly or receive provider secrets.
+The current demo API focuses on quick expense input, AI Anti-Regret Coach, profile personalization, local reminders, challenges, short Boss-linked financial lessons, XP/stats, boss progress, and dashboard. Reflection is a future/post-demo feature only. AI provider calls are backend-only; clients must never call Gemini directly or receive provider secrets.
 
 ## User identity before authentication
 
@@ -109,6 +109,9 @@ Response `201`:
     "level": 1,
     "xp": 0,
     "discipline": 0,
+    "savings": 0,
+    "knowledge": 0,
+    "wealth": 0,
     "mainGoal": "reduce_impulse_shopping",
     "targetAmount": 20000000,
     "targetDate": "2026-12-31",
@@ -138,6 +141,9 @@ Response `200`:
     "level": 1,
     "xp": 40,
     "discipline": 0,
+    "savings": 0,
+    "knowledge": 2,
+    "wealth": 2,
     "mainGoal": "reduce_impulse_shopping",
     "targetAmount": 20000000,
     "targetDate": "2026-12-31",
@@ -177,6 +183,9 @@ Response `200`:
     "level": 1,
     "xp": 40,
     "discipline": 0,
+    "savings": 0,
+    "knowledge": 2,
+    "wealth": 2,
     "mainGoal": "reduce_impulse_shopping",
     "targetAmount": 20000000,
     "targetDate": "2026-12-31",
@@ -313,6 +322,9 @@ Response `200`:
       "level": 1,
       "xp": 50,
       "discipline": 0,
+      "savings": 0,
+      "knowledge": 2,
+      "wealth": 2,
       "monthlyBudget": 3000000,
       "monthlySpent": 55000,
       "mainGoal": "Tiết kiệm 20 triệu",
@@ -320,8 +332,8 @@ Response `200`:
       "preferredTone": "funny"
     },
     "boss": {
-      "bossId": "impulse-boss",
-      "name": "Boss Trà Sữa",
+      "bossId": "bubble-tea-monster",
+      "name": "Quái Vật Trà Sữa",
       "currentHp": 80,
       "maxHp": 100,
       "status": "active",
@@ -370,6 +382,113 @@ When today's challenge has been completed and the boss is still active, dashboar
 ```
 
 When the boss is defeated, dashboard returns `todayChallenge: null`, `nextChallengeAvailableOn: null`, and `challengeMessage: "Bạn đã đánh bại boss này"`.
+
+## Financial lessons
+
+Lessons are short educational modules attached to a Boss. Each item contains four public flashcards and a final multiple-choice quiz. The REST list never exposes `correctAnswerId`, `correct_answer_id`, or database/provider details.
+
+### `GET /api/lessons?userId=vmh-device-generated-id&bossId=bubble-tea-monster`
+
+Both query fields are required trimmed strings and are validated with a reasonable maximum length. The profile must exist. Lessons are returned by `sort_order`; status is determined on the backend from `user_lesson_progress` and is only `available` or `completed`.
+
+Response `200`:
+
+```json
+{
+  "success": true,
+  "message": "Lessons retrieved",
+  "data": {
+    "items": [
+      {
+        "id": "bubble-tea-small-costs",
+        "bossId": "bubble-tea-monster",
+        "title": "45.000đ có thật sự nhỏ?",
+        "summary": "Nhìn thấy chi phí tích lũy của những khoản nhỏ lặp lại.",
+        "cards": [
+          {
+            "id": "card-1",
+            "title": "Một lần thì nhỏ",
+            "body": "Một ly trà sữa 45.000đ nghe có vẻ không đáng kể."
+          }
+        ],
+        "quiz": {
+          "question": "Một ly giá 45.000đ, uống 3 ly mỗi tuần trong 4 tuần thì tốn khoảng bao nhiêu?",
+          "answers": [
+            { "id": "a", "label": "135.000đ" },
+            { "id": "b", "label": "360.000đ" },
+            { "id": "c", "label": "540.000đ" },
+            { "id": "d", "label": "1.350.000đ" }
+          ]
+        },
+        "rewardXp": 20,
+        "knowledgeReward": 2,
+        "status": "available"
+      }
+    ]
+  }
+}
+```
+
+Missing/invalid query fields return `422`. A missing profile returns `404` with `"Profile not found"`.
+
+### `POST /api/lessons/:lessonId/complete`
+
+Request:
+
+```json
+{
+  "userId": "vmh-device-generated-id",
+  "answerId": "c"
+}
+```
+
+The route validates the lesson ID and body. The client submits only its selected answer ID; the correct answer is read inside the database RPC. A first correct answer awards the configured XP and Knowledge, then recalculates level. An incorrect answer records `in_progress`, awards nothing, returns an explanation, and may be retried. Completed lessons cannot award rewards again.
+
+First correct response `200`:
+
+```json
+{
+  "success": true,
+  "message": "Lesson completed",
+  "data": {
+    "lessonId": "bubble-tea-small-costs",
+    "status": "completed",
+    "progression": {
+      "xpGained": 20,
+      "knowledgeGained": 2,
+      "totalXp": 70,
+      "level": 1,
+      "knowledge": 4
+    },
+    "explanation": "45.000 × 3 × 4 = 540.000đ."
+  }
+}
+```
+
+Incorrect response `422`:
+
+```json
+{
+  "success": false,
+  "message": "Lesson answer is incorrect",
+  "errors": {
+    "code": "LESSON_ANSWER_INCORRECT",
+    "explanation": "45.000 × 3 × 4 = 540.000đ."
+  }
+}
+```
+
+Already completed response `409`:
+
+```json
+{
+  "success": false,
+  "message": "Lesson already completed",
+  "errors": {
+    "code": "LESSON_ALREADY_COMPLETED"
+  }
+}
+```
 
 ## Anti-Regret Coach
 
@@ -662,7 +781,7 @@ Response `200`:
       "discipline": 5
     },
     "boss": {
-      "bossId": "impulse-boss",
+      "bossId": "bubble-tea-monster",
       "name": "Impulse Boss",
       "currentHp": 80,
       "maxHp": 100

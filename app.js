@@ -10,6 +10,7 @@ const coachRouter = require("./src/routes/coach.routes");
 const dashboardRouter = require("./src/routes/dashboard.routes");
 const expenseRouter = require("./src/routes/expense.routes");
 const healthRouter = require("./src/routes/health.routes");
+const lessonRouter = require("./src/routes/lesson.routes");
 const profileRouter = require("./src/routes/profile.routes");
 const notFoundHandler = require("./src/middlewares/notFound.middleware");
 const errorHandler = require("./src/middlewares/error.middleware");
@@ -28,6 +29,7 @@ app.use("/api/health", healthRouter);
 app.use("/api/profile", profileRouter);
 app.use("/api/expenses", expenseRouter);
 app.use("/api/challenges", challengeRouter);
+app.use("/api/lessons", lessonRouter);
 app.use("/api/coach", coachRouter);
 app.use("/api/dashboard", dashboardRouter);
 

@@ -33,14 +33,53 @@ Profile POST initializes this row once with an `upsert` on `user_id` using `igno
 | `xp` | integer | Initialized to `0`, read into Profile API |
 | `level` | integer | Initialized to `1`, read into Profile API |
 | `discipline` | integer | Initialized to `0`, read into Profile API |
-| `savings` | integer | Initialized to `0` |
-| `knowledge` | integer | Initialized to `0` |
+| `savings` | integer | Initialized to `0`, returned by Profile and Dashboard APIs |
+| `knowledge` | integer | Initialized to `0`, increased by first-time lesson completion and returned by Profile and Dashboard APIs |
 
-The current repository does not select an `id`, `wealth`, `created_at`, or `updated_at` field from `user_progress`; this document does not assert their presence, absence, type, generated status, or nullability.
+The current repository does not select an `id`, `wealth`, `created_at`, or `updated_at` field from `user_progress`; this document does not assert their presence, absence, type, generated status, or nullability. API `wealth` is computed as `discipline + savings + knowledge` and is not persisted.
+
+## Financial lessons
+
+Run `supabase/migrations/20260713150000_financial_lessons.sql` after the three existing persistence migrations. It adds short educational content linked to a Boss without changing challenge rewards.
+
+### `financial_lessons`
+
+| Column | Database type / nullability | Backend use |
+| --- | --- | --- |
+| `id` | text; primary key | Stable lesson identifier |
+| `boss_id` | text; non-null FK to `bosses(id)` | Groups lessons under the existing Boss |
+| `title`, `summary` | text; non-null | Lesson list presentation |
+| `cards` | jsonb; non-empty array | Four ordered flashcards with `id`, `title`, and `body` |
+| `question` | text; non-null | Final quiz question |
+| `answers` | jsonb; non-empty array | Public answer IDs and labels |
+| `correct_answer_id` | text; non-null | Read only inside the backend-only completion RPC; never returned by REST |
+| `explanation` | text; non-null | Returned after checking an answer |
+| `reward_xp` | integer; non-negative; default `20` | One-time XP reward |
+| `knowledge_reward` | integer; non-negative; default `2` | One-time Knowledge reward |
+| `sort_order` | positive integer | Unique ordering within a Boss |
+| `is_active` | boolean; default `true` | Controls list/completion availability |
+| `created_at`, `updated_at` | timestamptz | Audit timestamps |
+
+The lesson migration seeds `bubble-tea-small-costs`, `bubble-tea-trigger`, and `bubble-tea-promotion`. The canonicalization hotfix links all three to production boss `bubble-tea-monster`.
+
+### `user_lesson_progress`
+
+| Column | Database type / nullability | Backend use |
+| --- | --- | --- |
+| `user_id` | text; non-null FK to `profiles(user_id)`; cascade delete | User side of the composite key |
+| `lesson_id` | text; non-null FK to `financial_lessons(id)`; cascade delete | Lesson side of the composite key |
+| `status` | text; `in_progress` or `completed` | Completion state |
+| `selected_answer_id` | text; nullable | Last submitted answer ID |
+| `completed_at` | timestamptz; nullable | First successful completion time |
+| `created_at`, `updated_at` | timestamptz | Audit timestamps |
+
+`complete_financial_lesson_v1(text, text, text)` uses a transaction-scoped advisory lock for the user/lesson pair. It compares the submitted answer with database content, records incorrect attempts without reward, and atomically awards XP plus Knowledge only on the first correct completion. Execution is revoked from `PUBLIC`, `anon`, and `authenticated`, then granted only to `service_role`.
+
+Both lesson tables have row-level security enabled with no client policies. Direct table access is revoked from `PUBLIC`, `anon`, and `authenticated`; the Express backend uses the service role, while clients continue to call only the REST API. This prevents `correct_answer_id` and per-user lesson progress from being read directly by a client.
 
 ## Expense and game persistence
 
-Run `supabase/migrations/20260710_expense_challenge_persistence.sql`, `supabase/migrations/20260713_ordered_boss_challenges.sql`, then `supabase/migrations/20260713_challenge_rpc_ambiguity_hotfix.sql` through the Supabase SQL Editor. The ordered-challenge migration preserves the existing composite primary key on `user_challenges` and does not drop tables. The hotfix replaces both challenge RPCs with fully qualified table-column references, preventing PostgreSQL `42702` errors without changing their signatures or behavior.
+Run the persistence, ordered-challenge, challenge RPC hotfix, financial lesson, and boss canonicalization migrations in timestamp order through the Supabase SQL Editor. The ordered-challenge migration preserves the existing composite primary key on `user_challenges` and does not drop tables. The RPC hotfixes use fully qualified table-column references, preventing PostgreSQL `42702` errors without changing their signatures.
 
 The migration adds only these columns when absent:
 
@@ -54,12 +93,14 @@ It reuses these existing tables:
 | `expenses` | Quick expense records; `spent_at` maps to API `occurredAt`, and `raw_text` maps to API `text`. Currency is computed as `VND`. |
 | `challenges` | Seeded MVP definition (`challenge-1`) and rewards. |
 | `user_challenges` | Per-user status and completion time, keyed by `(user_id, challenge_id)`. |
-| `bosses` | Seeded `impulse-boss` definition. |
+| `bosses` | Canonical `bubble-tea-monster` definition (`Quái Vật Trà Sữa`, `food_drink`); its production `max_hp` is preserved. |
 | `user_boss_progress` | Per-user boss HP/status, keyed by `(user_id, boss_id)`. |
 
 Ordered boss challenges add `challenges.sequence_order integer not null` (positive and unique per linked boss), `user_challenges.assigned_date date not null` in the `Asia/Ho_Chi_Minh` business timezone, and `user_boss_progress.started_at timestamptz not null default now()`. A partial unique index permits at most one active challenge per user.
 
-`ensure_default_game_state_v1` selects the active boss by `started_at ASC, boss_id ASC`, keeps unfinished challenges active, and assigns the lowest uncompleted sequence only after a new business day. `complete_challenge_v1` locks and updates challenge, XP, discipline, and boss HP atomically. Both RPCs accept an optional internal business date for deterministic tests; production defaults to `Asia/Ho_Chi_Minh`.
+`ensure_default_game_state_v1` preserves an existing active boss and initializes `bubble-tea-monster` when a canonical default row is needed. It keeps unfinished challenges active and assigns the lowest uncompleted sequence only after a new business day. `complete_challenge_v1` locks and updates challenge, XP, discipline, and boss HP atomically. Both RPCs accept an optional internal business date for deterministic tests; production defaults to `Asia/Ho_Chi_Minh`.
+
+`20260713180000_canonicalize_bubble_tea_boss.sql` verifies the primary keys and partial unique indexes used by Boss and challenge progress before changing rows. Equivalent legacy challenges are matched to canonical challenges by stable title, with equal `sequence_order` preferred when more than one title match exists. Their `user_challenges` rows are merged on `(user_id, challenge_id)`; completed status wins and the earliest recorded completion time is retained. Unmatched legacy challenges are preserved and appended after the canonical Boss's current maximum sequence, preventing `(linked_boss_id, sequence_order)` collisions and duplicate content. When both legacy and canonical Boss progress rows exist for a user, the migration keeps the lower HP, preserves a defeated status, keeps the earlier `started_at`, and keeps the later `updated_at`.
 
 `ensure_default_game_state_v1(text, date)` lazily creates missing progress, challenge, and boss rows without resetting existing state. `record_expense_and_add_xp_v1(...)` inserts one expense and awards XP atomically. `complete_challenge_v1(text, text, date)` locks the user's game state and atomically marks completion, awards progress, and damages the linked boss. All three functions use a safe `search_path`; execution is revoked from `PUBLIC`, `anon`, and `authenticated`, then granted only to `service_role`.
 

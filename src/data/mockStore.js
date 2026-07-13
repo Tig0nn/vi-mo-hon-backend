@@ -11,10 +11,10 @@ const state = {
   },
 };
 
-// Legacy mock seed fixtures. Persistent game logic discovers active rows from Supabase.
+// Mock seed fixtures. Persistent game logic discovers active rows from Supabase.
 const bossTemplate = {
-  bossId: 'impulse-boss',
-  name: 'Impulse Boss',
+  bossId: 'bubble-tea-monster',
+  name: 'Quái Vật Trà Sữa',
   currentHp: 100,
   maxHp: 100,
 };

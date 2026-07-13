@@ -41,6 +41,10 @@ const toApiProfile = (row, progress = null) => {
     return null;
   }
 
+  const discipline = Number(progress && progress.discipline !== undefined ? progress.discipline : 0);
+  const savings = Number(progress && progress.savings !== undefined ? progress.savings : 0);
+  const knowledge = Number(progress && progress.knowledge !== undefined ? progress.knowledge : 0);
+
   return {
     id: row.id || row.user_id,
     userId: row.user_id,
@@ -49,7 +53,10 @@ const toApiProfile = (row, progress = null) => {
     currency: 'VND',
     level: progress && progress.level !== undefined ? progress.level : 1,
     xp: progress && progress.xp !== undefined ? progress.xp : 0,
-    discipline: progress && progress.discipline !== undefined ? progress.discipline : 0,
+    discipline,
+    savings,
+    knowledge,
+    wealth: discipline + savings + knowledge,
     mainGoal: row.main_goal,
     targetAmount: row.target_amount,
     targetDate: row.target_date,

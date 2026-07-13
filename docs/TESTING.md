@@ -85,6 +85,45 @@ The second completion must leave XP, discipline, and boss HP unchanged.
 - [x] Ordered challenges remain active when unfinished, unlock only on the following business day, and defeat the boss after the final challenge.
 - [x] Dashboard preserves `activeChallenges` and returns `todayChallenge`, challenge availability messaging, and boss challenge counts.
 - [x] Challenge RPC migration qualifies identifiers that overlap `RETURNS TABLE` output fields and guards against PostgreSQL `42702` ambiguity.
+- [x] Lesson listing returns the three ordered lessons without either correct-answer field.
+- [x] Lesson query and completion input validation cover missing fields and missing profiles.
+- [x] Incorrect lesson answers return an explanation and leave XP/Knowledge unchanged.
+- [x] First correct completion awards exactly 20 XP and 2 Knowledge, recalculates level, and updates Profile/Dashboard.
+- [x] Repeated or concurrent duplicate completion awards at most once and returns `409` for the duplicate.
+
+## Financial lesson migration review
+
+After reviewing `supabase/migrations/20260713150000_financial_lessons.sql`, apply it manually in Supabase SQL Editor after the three existing migrations. Do not run `supabase db push` for this feature.
+
+Then verify with a disposable test user:
+
+```http
+GET /api/lessons?userId=test-user-persistence&bossId=bubble-tea-monster
+POST /api/lessons/bubble-tea-small-costs/complete
+{ "userId": "test-user-persistence", "answerId": "a" }
+POST /api/lessons/bubble-tea-small-costs/complete
+{ "userId": "test-user-persistence", "answerId": "c" }
+```
+
+Expected statuses: `200`, `422`, `200`. Repeating the last request must return `409`.
+
+Verify safely in SQL Editor:
+
+```sql
+select id, boss_id, title, sort_order, reward_xp, knowledge_reward, is_active
+from public.financial_lessons
+order by boss_id, sort_order;
+
+select user_id, lesson_id, status, selected_answer_id, completed_at
+from public.user_lesson_progress
+where user_id = 'test-user-persistence';
+
+select user_id, xp, level, knowledge
+from public.user_progress
+where user_id = 'test-user-persistence';
+```
+
+The incorrect request must not change XP or Knowledge. The correct request may add exactly 20 XP and 2 Knowledge once.
 
 ## Implemented onboarding validation
 

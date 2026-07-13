@@ -20,6 +20,7 @@ Completed backend slices:
 ```text
 Slice 1: health check -> environment config -> profile -> quick expense input -> XP progression -> initial boss state -> dashboard
 Slice 2: challenge list -> challenge completion -> XP + discipline -> boss HP damage -> dashboard update
+Slice 3: boss-linked one-minute lessons -> flashcards + quiz -> one-time XP + knowledge reward
 ```
 
 The demo MVP now focuses on:
@@ -33,13 +34,15 @@ The demo MVP now focuses on:
 - XP/stats
 - Boss progress
 - Dashboard
+- Short financial lessons linked to the active Boss
 
 Current persistence is hybrid:
 
 - Profiles: Supabase
 - User-progress initialization: Supabase
 - Expenses: mock
-- Challenges: mock
+- Challenges: Supabase
+- Financial lessons and per-user lesson progress: Supabase
 - Boss progress: mock
 - Dashboard: hybrid/mock aggregation
 - Coach: hybrid; it reads the mock-synchronized profile and uses Gemini when configured, otherwise its Anti-Regret endpoint uses a rule-based fallback
@@ -117,6 +120,8 @@ src/
 - `GET /api/expenses?userId=mock-user`
 - `GET /api/challenges?userId=mock-user`
 - `POST /api/challenges/:challengeId/complete`
+- `GET /api/lessons?userId=mock-user&bossId=bubble-tea-monster`
+- `POST /api/lessons/:lessonId/complete`
 - `POST /api/coach/anti-regret`
 - `POST /api/coach/chat`
 - `PATCH /api/coach/urges/:urgeId`
@@ -187,6 +192,7 @@ Error:
 - Supabase-backed profile can be created/read/updated, and profile creation initializes Supabase `user_progress` without resetting an existing row.
 - Quick expense input creates an expense and updates user progression.
 - Challenge completion updates XP, discipline, boss HP, and active challenge state.
+- Financial lessons return four short flashcards and a quiz without exposing the correct answer. A first correct completion awards XP and Knowledge exactly once; an incorrect answer awards nothing and can be retried.
 - Anti-Regret Coach returns profile-aware spending guidance for the demo behavior-change loop.
 - Dashboard returns profile summary, recent expenses, XP state, discipline, boss state, and active challenges.
 - API docs match implemented endpoint behavior.
