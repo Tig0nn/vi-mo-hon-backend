@@ -10,7 +10,7 @@ Do not mark a check PASS unless it has actually been run and recorded for the re
 
 ## Expense, challenge, and dashboard persistence
 
-1. Run `supabase/migrations/20260710_expense_challenge_persistence.sql`, then `supabase/migrations/20260713_ordered_boss_challenges.sql` in Supabase SQL Editor. Do not add `DATABASE_URL` or create another project.
+1. Run `supabase/migrations/20260710_expense_challenge_persistence.sql`, `supabase/migrations/20260713_ordered_boss_challenges.sql`, then `supabase/migrations/20260713_challenge_rpc_ambiguity_hotfix.sql` in Supabase SQL Editor. Do not add `DATABASE_URL` or create another project.
 2. Start the API and create/update a test profile:
 
 ```http
@@ -84,6 +84,7 @@ The second completion must leave XP, discipline, and boss HP unchanged.
 - [x] Dashboard reads persisted progress, expenses, boss progress, and challenges without Reflection data.
 - [x] Ordered challenges remain active when unfinished, unlock only on the following business day, and defeat the boss after the final challenge.
 - [x] Dashboard preserves `activeChallenges` and returns `todayChallenge`, challenge availability messaging, and boss challenge counts.
+- [x] Challenge RPC migration qualifies identifiers that overlap `RETURNS TABLE` output fields and guards against PostgreSQL `42702` ambiguity.
 
 ## Implemented onboarding validation
 

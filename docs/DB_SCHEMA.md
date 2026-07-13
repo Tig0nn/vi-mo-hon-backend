@@ -40,7 +40,7 @@ The current repository does not select an `id`, `wealth`, `created_at`, or `upda
 
 ## Expense and game persistence
 
-Run `supabase/migrations/20260710_expense_challenge_persistence.sql`, then `supabase/migrations/20260713_ordered_boss_challenges.sql` through the Supabase SQL Editor. The second migration preserves the existing composite primary key on `user_challenges` and does not drop tables.
+Run `supabase/migrations/20260710_expense_challenge_persistence.sql`, `supabase/migrations/20260713_ordered_boss_challenges.sql`, then `supabase/migrations/20260713_challenge_rpc_ambiguity_hotfix.sql` through the Supabase SQL Editor. The ordered-challenge migration preserves the existing composite primary key on `user_challenges` and does not drop tables. The hotfix replaces both challenge RPCs with fully qualified table-column references, preventing PostgreSQL `42702` errors without changing their signatures or behavior.
 
 The migration adds only these columns when absent:
 

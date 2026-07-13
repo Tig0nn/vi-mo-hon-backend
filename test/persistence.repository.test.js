@@ -33,3 +33,18 @@ test('game business logic does not hard-code seeded boss or challenge ids', () =
   assert.doesNotMatch(source, /impulse-boss|challenge-1/);
   assert.doesNotMatch(rpcSource, /impulse-boss|challenge-1/);
 });
+
+test('challenge RPC hotfix qualifies identifiers that overlap RETURNS TABLE fields', () => {
+  const hotfix = fs.readFileSync(
+    path.join(__dirname, '..', 'supabase/migrations/20260713_challenge_rpc_ambiguity_hotfix.sql'),
+    'utf8',
+  );
+
+  assert.match(hotfix, /CREATE OR REPLACE FUNCTION public\.ensure_default_game_state_v1/);
+  assert.match(hotfix, /CREATE OR REPLACE FUNCTION public\.complete_challenge_v1/);
+  assert.match(hotfix, /UPDATE public\.user_challenges AS uc/);
+  assert.match(hotfix, /WHERE uc\.user_id = p_user_id\s+AND uc\.challenge_id = p_challenge_id/);
+  assert.match(hotfix, /ON CONFLICT ON CONSTRAINT user_challenges_pkey/);
+  assert.doesNotMatch(hotfix, /WHERE\s+user_id\s*=|AND\s+challenge_id\s*=|AND\s+boss_id\s*=/);
+  assert.doesNotMatch(hotfix, /ON CONFLICT \(user_id, challenge_id\)/);
+});
