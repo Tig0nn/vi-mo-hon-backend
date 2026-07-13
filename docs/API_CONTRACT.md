@@ -507,6 +507,62 @@ Gemini provider error response `502` or `503`:
 }
 ```
 
+### `POST /api/coach/voice-message`
+
+Accepts a Vietnamese voice message from the Coach tab, transcribes the audio with Gemini, then reuses the same Coach chat reply logic as `POST /api/coach/chat`. This endpoint is backend-only for AI provider calls.
+
+Request content type: `multipart/form-data`
+
+Fields:
+
+| Field | Type | Required | Rules |
+| --- | --- | --- | --- |
+| `userId` | string | yes | Stable non-empty device/user id. The user profile must already exist. |
+| `audio` | file | yes | Field name must be `audio`. Supported formats are `.m4a` and `.wav`. Maximum file size is 10MB. Maximum duration is 60 seconds. |
+
+Rules:
+
+- The backend validates file size, file type, and readable audio duration before calling Gemini.
+- Audio over 10MB returns `413`.
+- Unsupported formats return `422`.
+- Audio over 60 seconds returns `422`.
+- Gemini transcription asks for an exact Vietnamese transcript only.
+- The transcribed text is passed into the existing Coach chat flow so response quality, profile context, recent spending context, retry behavior, and AI error semantics stay aligned with `POST /api/coach/chat`.
+- Successful responses include `debug.provider` with `gemini` and `debug.retryCount` outside production.
+
+Response `200`:
+
+```json
+{
+  "success": true,
+  "message": "Coach voice response generated",
+  "data": {
+    "transcribedText": "Tôi muốn mua đồng hồ 1 triệu vì đang sale, có nên mua không?",
+    "coachReply": "Đồng hồ 1 triệu là khoản không nhỏ, nhất là nếu bạn đang có mục tiêu tiết kiệm. Nếu lý do chính là sale, hãy chờ 24 giờ rồi xem bạn còn muốn mua không. Nếu vẫn muốn mua, đặt trước một mức giá tối đa để tránh chốt vì cảm xúc.",
+    "suggestedQuestions": [
+      "Nếu không mua món này thì tôi tiết kiệm được bao nhiêu?",
+      "Có lựa chọn nào rẻ hơn không?",
+      "Món này có thật sự cần trong tuần này không?"
+    ]
+  },
+  "debug": {
+    "provider": "gemini",
+    "retryCount": 0
+  }
+}
+```
+
+Invalid audio response `422`:
+
+```json
+{
+  "success": false,
+  "message": "Audio duration must be 60 seconds or shorter"
+}
+```
+
+AI provider and invalid AI output errors use the same `error.code` shape as `POST /api/coach/chat`.
+
 ### `PATCH /api/coach/urges/:urgeId`
 
 Updates the result of a spending urge.

@@ -137,6 +137,43 @@ const requestJson = async (baseUrl, path, options = {}) => {
   return { response, body };
 };
 
+const requestForm = async (baseUrl, path, formData, options = {}) => {
+  const response = await fetch(`${baseUrl}${path}`, {
+    ...options,
+    method: options.method || "POST",
+    body: formData,
+  });
+
+  const body = await response.json();
+  return { response, body };
+};
+
+const createSilentWavBuffer = (durationSeconds = 1) => {
+  const sampleRate = 8000;
+  const channels = 1;
+  const bitsPerSample = 16;
+  const byteRate = (sampleRate * channels * bitsPerSample) / 8;
+  const blockAlign = (channels * bitsPerSample) / 8;
+  const dataSize = Math.floor(durationSeconds * byteRate);
+  const buffer = Buffer.alloc(44 + dataSize);
+
+  buffer.write("RIFF", 0, "ascii");
+  buffer.writeUInt32LE(36 + dataSize, 4);
+  buffer.write("WAVE", 8, "ascii");
+  buffer.write("fmt ", 12, "ascii");
+  buffer.writeUInt32LE(16, 16);
+  buffer.writeUInt16LE(1, 20);
+  buffer.writeUInt16LE(channels, 22);
+  buffer.writeUInt32LE(sampleRate, 24);
+  buffer.writeUInt32LE(byteRate, 28);
+  buffer.writeUInt16LE(blockAlign, 32);
+  buffer.writeUInt16LE(bitsPerSample, 34);
+  buffer.write("data", 36, "ascii");
+  buffer.writeUInt32LE(dataSize, 40);
+
+  return buffer;
+};
+
 const futureDate = () =>
   new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
 
@@ -688,6 +725,106 @@ test("coach chat returns a validated Gemini reply, suggested questions, and retr
     assert.deepEqual(coach.body.debug, { provider: "gemini", retryCount: 0 });
   } finally {
     geminiService.generateCoachChatReply = originalGenerate;
+    await server.close();
+  }
+});
+
+test("coach voice-message transcribes audio and reuses coach chat reply logic", async () => {
+  const geminiService = require("../src/services/gemini.service");
+  const originalTranscribe = geminiService.generateVoiceTranscription;
+  const originalGenerate = geminiService.generateCoachChatReply;
+  const transcript =
+    "Tôi muốn mua đồng hồ 1 triệu vì đang sale, có nên mua không?";
+
+  geminiService.generateVoiceTranscription = async (context) => {
+    assert.ok(Buffer.isBuffer(context.audioBuffer));
+    assert.equal(context.mimeType, "audio/wav");
+    return transcript;
+  };
+  geminiService.generateCoachChatReply = async (context) => {
+    assert.equal(context.userMessage, transcript);
+    assert.equal(context.mainGoal, "save_money");
+    assert.deepEqual(context.triggers, ["flash_sale"]);
+    return {
+      reply:
+        "Đồng hồ 1 triệu là khoản cần cân nhắc nếu bạn đang có mục tiêu tiết kiệm rõ ràng. Vì lý do chính là sale, hãy chờ 24 giờ rồi xem bạn còn muốn mua không. Nếu vẫn muốn mua, đặt trước mức chi tối đa để không bị cảm xúc kéo đi.",
+      suggestedQuestions: [
+        "Nếu không mua món này thì tôi tiết kiệm được bao nhiêu?",
+        "Có lựa chọn nào rẻ hơn không?",
+        "Món này có thật sự cần trong tuần này không?",
+      ],
+      retryCount: 0,
+    };
+  };
+
+  const server = await startServer();
+
+  try {
+    await requestJson(server.baseUrl, "/api/profile", {
+      method: "POST",
+      body: JSON.stringify(validOnboardingPayload()),
+    });
+
+    const formData = new FormData();
+    formData.append("userId", "mock-user");
+    formData.append(
+      "audio",
+      new Blob([createSilentWavBuffer(1)], { type: "audio/wav" }),
+      "voice.wav",
+    );
+
+    const coach = await requestForm(
+      server.baseUrl,
+      "/api/coach/voice-message",
+      formData,
+    );
+
+    assert.equal(coach.response.status, 200);
+    assert.equal(coach.body.success, true);
+    assert.equal(coach.body.message, "Coach voice response generated");
+    assert.equal(coach.body.data.transcribedText, transcript);
+    assert.match(coach.body.data.coachReply, /Đồng hồ 1 triệu/);
+    assert.equal(coach.body.data.suggestedQuestions.length, 3);
+    assert.deepEqual(coach.body.debug, { provider: "gemini", retryCount: 0 });
+  } finally {
+    geminiService.generateVoiceTranscription = originalTranscribe;
+    geminiService.generateCoachChatReply = originalGenerate;
+    await server.close();
+  }
+});
+
+test("coach voice-message rejects audio longer than 60 seconds", async () => {
+  const geminiService = require("../src/services/gemini.service");
+  const originalTranscribe = geminiService.generateVoiceTranscription;
+  let transcribeCalled = false;
+  geminiService.generateVoiceTranscription = async () => {
+    transcribeCalled = true;
+    return "Không nên gọi tới đây";
+  };
+
+  const server = await startServer();
+
+  try {
+    const formData = new FormData();
+    formData.append("userId", "mock-user");
+    formData.append(
+      "audio",
+      new Blob([createSilentWavBuffer(61)], { type: "audio/wav" }),
+      "long.wav",
+    );
+
+    const coach = await requestForm(
+      server.baseUrl,
+      "/api/coach/voice-message",
+      formData,
+    );
+
+    assert.equal(coach.response.status, 422);
+    assert.equal(coach.body.success, false);
+    assert.equal(coach.body.message, "Audio duration must be 60 seconds or shorter");
+    assert.equal(transcribeCalled, false);
+  } finally {
+    geminiService.generateVoiceTranscription = originalTranscribe;
     await server.close();
   }
 });

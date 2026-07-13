@@ -255,6 +255,21 @@ Original user message:
 ${input.userMessage}
 `.trim();
 
+const buildVoiceTranscriptionPrompt = () =>
+  `
+Listen to the attached audio and transcribe exactly what the user says in Vietnamese.
+
+Return only the transcription text.
+
+Rules:
+- Vietnamese only.
+- Do not translate to another language.
+- Do not add explanations, labels, markdown, JSON, timestamps, or speaker names.
+- Preserve the user's meaning as accurately as possible.
+- If the speech is unclear, return the most likely Vietnamese sentence.
+- Keep the result under 500 characters.
+`.trim();
+
 const createGeminiClient = (apiKey) => new GoogleGenAI({ apiKey });
 
 const generateAntiRegretCoachMessage = async (input, options = {}) => {
@@ -460,11 +475,89 @@ const generateCoachChatReply = async (input, options = {}) => {
   }
 };
 
+const generateVoiceTranscription = async (input, options = {}) => {
+  const apiKey = options.apiKey || process.env.GEMINI_API_KEY;
+
+  if (!apiKey) {
+    throw createAiError(
+      "AI_PROVIDER_ERROR",
+      "Coach chưa được cấu hình API key.",
+      503,
+      {
+        retryCount: 0,
+        reason: "missing_api_key",
+      },
+    );
+  }
+
+  const model = options.model || process.env.GEMINI_MODEL || env.GEMINI_MODEL;
+  const client = options.client || createGeminiClient(apiKey);
+
+  let response;
+  try {
+    response = await client.models.generateContent({
+      model,
+      contents: [
+        {
+          role: "user",
+          parts: [
+            { text: buildVoiceTranscriptionPrompt() },
+            {
+              inlineData: {
+                mimeType: input.mimeType,
+                data: input.audioBuffer.toString("base64"),
+              },
+            },
+          ],
+        },
+      ],
+      config: {
+        temperature: 0,
+        maxOutputTokens: 160,
+      },
+    });
+  } catch (error) {
+    if (process.env.NODE_ENV !== "production") {
+      console.error("[Gemini voice transcription error]", {
+        name: error.name,
+        message: error.message,
+        status: error.status,
+        code: error.code,
+      });
+    }
+
+    throw createAiError(
+      "AI_PROVIDER_ERROR",
+      "Coach đang hơi lag, thử lại sau nha.",
+      error.status === 429 ? 429 : 502,
+      {
+        reason: "provider_voice_transcription_failed",
+      },
+    );
+  }
+
+  const transcribedText = sanitizeCoachMessage(getResponseText(response));
+  if (!transcribedText) {
+    throw createAiError(
+      "AI_RESPONSE_INVALID",
+      "Không nghe rõ nội dung audio, thử ghi âm lại nha.",
+      502,
+      {
+        reason: "invalid_empty_transcription",
+      },
+    );
+  }
+
+  return transcribedText.slice(0, 500);
+};
+
 module.exports = {
   buildAntiRegretPrompt,
   buildChatCoachPrompt,
   buildChatCoachRepairPrompt,
+  buildVoiceTranscriptionPrompt,
   generateCoachChatReply,
   generateAntiRegretCoachMessage,
+  generateVoiceTranscription,
   isValidCoachReply,
 };

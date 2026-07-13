@@ -5,6 +5,18 @@ const geminiService = require("./gemini.service");
 const profileService = require("./profile.service");
 
 const GENERAL_TRIGGER = "other";
+const MAX_AUDIO_BYTES = 10 * 1024 * 1024;
+const MAX_AUDIO_DURATION_SECONDS = 60;
+const AUDIO_FORMATS = {
+  wav: {
+    extensions: [".wav"],
+    mimeTypes: ["audio/wav", "audio/wave", "audio/x-wav"],
+  },
+  m4a: {
+    extensions: [".m4a"],
+    mimeTypes: ["audio/m4a", "audio/mp4", "audio/x-m4a"],
+  },
+};
 
 const normalizeText = (value = "") =>
   String(value)
@@ -208,6 +220,176 @@ const getSafeGeminiErrorDetails = (error) => ({
   code: error && error.code ? error.code : undefined,
 });
 
+const getFileExtension = (filename = "") => {
+  const match = String(filename).toLowerCase().match(/\.[a-z0-9]+$/);
+  return match ? match[0] : "";
+};
+
+const getAudioFormat = (file) => {
+  const extension = getFileExtension(file.originalname);
+  const mimeType = String(file.mimetype || "").toLowerCase();
+
+  return Object.entries(AUDIO_FORMATS).find(([, format]) => {
+    return (
+      format.extensions.includes(extension) ||
+      format.mimeTypes.includes(mimeType)
+    );
+  });
+};
+
+const readAtomSize = (buffer, offset) => {
+  if (offset + 8 > buffer.length) {
+    return null;
+  }
+
+  const size32 = buffer.readUInt32BE(offset);
+  if (size32 === 1) {
+    if (offset + 16 > buffer.length) {
+      return null;
+    }
+
+    const size64 = buffer.readBigUInt64BE(offset);
+    if (size64 > BigInt(Number.MAX_SAFE_INTEGER)) {
+      return null;
+    }
+
+    return Number(size64);
+  }
+
+  if (size32 === 0) {
+    return buffer.length - offset;
+  }
+
+  return size32;
+};
+
+const getMp4DurationSeconds = (buffer, start = 0, end = buffer.length) => {
+  let offset = start;
+
+  while (offset + 8 <= end) {
+    const atomSize = readAtomSize(buffer, offset);
+    if (!atomSize || atomSize < 8 || offset + atomSize > end) {
+      return null;
+    }
+
+    const type = buffer.toString("ascii", offset + 4, offset + 8);
+    const headerSize = buffer.readUInt32BE(offset) === 1 ? 16 : 8;
+    const payloadStart = offset + headerSize;
+    const payloadEnd = offset + atomSize;
+
+    if (type === "mvhd") {
+      const version = buffer.readUInt8(payloadStart);
+      if (version === 1 && payloadStart + 36 <= payloadEnd) {
+        const timescale = buffer.readUInt32BE(payloadStart + 20);
+        const duration = buffer.readBigUInt64BE(payloadStart + 24);
+        return timescale > 0 ? Number(duration) / timescale : null;
+      }
+
+      if (version === 0 && payloadStart + 24 <= payloadEnd) {
+        const timescale = buffer.readUInt32BE(payloadStart + 12);
+        const duration = buffer.readUInt32BE(payloadStart + 16);
+        return timescale > 0 ? duration / timescale : null;
+      }
+
+      return null;
+    }
+
+    if (["moov", "trak", "mdia"].includes(type)) {
+      const duration = getMp4DurationSeconds(buffer, payloadStart, payloadEnd);
+      if (duration !== null) {
+        return duration;
+      }
+    }
+
+    offset += atomSize;
+  }
+
+  return null;
+};
+
+const getWavDurationSeconds = (buffer) => {
+  if (
+    buffer.length < 44 ||
+    buffer.toString("ascii", 0, 4) !== "RIFF" ||
+    buffer.toString("ascii", 8, 12) !== "WAVE"
+  ) {
+    return null;
+  }
+
+  let offset = 12;
+  let byteRate = null;
+  let dataSize = null;
+
+  while (offset + 8 <= buffer.length) {
+    const chunkId = buffer.toString("ascii", offset, offset + 4);
+    const chunkSize = buffer.readUInt32LE(offset + 4);
+    const chunkStart = offset + 8;
+    const chunkEnd = chunkStart + chunkSize;
+
+    if (chunkEnd > buffer.length) {
+      return null;
+    }
+
+    if (chunkId === "fmt " && chunkSize >= 16) {
+      byteRate = buffer.readUInt32LE(chunkStart + 8);
+    }
+
+    if (chunkId === "data") {
+      dataSize = chunkSize;
+    }
+
+    offset = chunkEnd + (chunkSize % 2);
+  }
+
+  if (!byteRate || !dataSize) {
+    return null;
+  }
+
+  return dataSize / byteRate;
+};
+
+const getAudioDurationSeconds = (formatName, buffer) => {
+  if (formatName === "wav") {
+    return getWavDurationSeconds(buffer);
+  }
+
+  if (formatName === "m4a") {
+    return getMp4DurationSeconds(buffer);
+  }
+
+  return null;
+};
+
+const validateAudioFile = (file) => {
+  if (!file) {
+    throw createHttpError(400, "Missing audio file");
+  }
+
+  if (file.size > MAX_AUDIO_BYTES) {
+    throw createHttpError(413, "Audio file must be 10MB or smaller");
+  }
+
+  const formatEntry = getAudioFormat(file);
+  if (!formatEntry) {
+    throw createHttpError(422, "Audio file must be m4a or wav");
+  }
+
+  const [formatName] = formatEntry;
+  const durationSeconds = getAudioDurationSeconds(formatName, file.buffer);
+  if (durationSeconds === null) {
+    throw createHttpError(422, "Could not read audio duration");
+  }
+
+  if (durationSeconds > MAX_AUDIO_DURATION_SECONDS) {
+    throw createHttpError(422, "Audio duration must be 60 seconds or shorter");
+  }
+
+  return {
+    formatName,
+    durationSeconds,
+  };
+};
+
 const createAntiRegretResponse = async (input, options = {}) => {
   const profile = await profileService.getProfile(input.userId);
 
@@ -303,9 +485,45 @@ const createChatResponse = async (input, options = {}) => {
   };
 };
 
+const createVoiceMessageResponse = async (input, options = {}) => {
+  const userId = String(input.userId || "").trim();
+  if (!userId) {
+    throw createHttpError(422, "Validation failed", {
+      userId: ["Required"],
+    });
+  }
+
+  validateAudioFile(input.audioFile);
+
+  const generateVoiceTranscription =
+    options.generateVoiceTranscription || geminiService.generateVoiceTranscription;
+  const transcribedText = await generateVoiceTranscription({
+    audioBuffer: input.audioFile.buffer,
+    mimeType: input.audioFile.mimetype,
+  });
+
+  const chatResponse = await createChatResponse(
+    {
+      userId,
+      message: transcribedText,
+    },
+    options,
+  );
+
+  return {
+    transcribedText,
+    coachReply: chatResponse.reply,
+    suggestedQuestions: chatResponse.suggestedQuestions,
+    providerUsed: chatResponse.providerUsed,
+    retryCount: chatResponse.retryCount,
+  };
+};
+
 module.exports = {
   buildCoachMessage,
   createChatResponse,
+  createVoiceMessageResponse,
   createAntiRegretResponse,
   detectTrigger,
+  validateAudioFile,
 };

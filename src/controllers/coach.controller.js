@@ -85,7 +85,56 @@ const createChatResponse = async (req, res, next) => {
   }
 };
 
+const sendCoachAiError = (res, error) => {
+  const payload = {
+    success: false,
+    message: error.message,
+    error: {
+      code: error.code,
+    },
+  };
+
+  if (env.NODE_ENV !== "production") {
+    payload.debug = error.debug || {
+      provider: "gemini",
+    };
+  }
+
+  return res.status(error.status || 502).json(payload);
+};
+
+const createVoiceMessageResponse = async (req, res, next) => {
+  try {
+    const serviceResult = await coachService.createVoiceMessageResponse({
+      userId: req.body && req.body.userId,
+      audioFile: req.file,
+    });
+    const { providerUsed, retryCount, ...data } = serviceResult;
+    const meta =
+      env.NODE_ENV === "production"
+        ? {}
+        : {
+            debug: {
+              provider: providerUsed,
+              retryCount,
+            },
+          };
+
+    return sendSuccess(res, data, "Coach voice response generated", 200, meta);
+  } catch (error) {
+    if (
+      error.code === "AI_RESPONSE_INVALID" ||
+      error.code === "AI_PROVIDER_ERROR"
+    ) {
+      return sendCoachAiError(res, error);
+    }
+
+    return next(error);
+  }
+};
+
 module.exports = {
   createAntiRegretResponse,
   createChatResponse,
+  createVoiceMessageResponse,
 };
