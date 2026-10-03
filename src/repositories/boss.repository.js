@@ -14,8 +14,23 @@ const findBossState = async (userId) => {
   if (error) throw error;
   const rows = data || [];
   const row = rows.find((item) => item.status === 'active') || rows[rows.length - 1];
-  if (!row) return null;
   return { bossId: row.bosses.id, name: row.bosses.name, currentHp: Number(row.current_hp), maxHp: Number(row.bosses.max_hp), status: row.status };
 };
 
-module.exports = { clearSupabaseClientForTest, findBossState, setSupabaseClientForTest };
+const updateBossHp = async (userId, bossId, newHp, status = null) => {
+  const finalStatus = status || (newHp <= 0 ? 'defeated' : 'active');
+  const clampedHp = Math.max(0, newHp);
+  const { data, error } = await getClient()
+    .from('user_boss_progress')
+    .update({
+      current_hp: clampedHp,
+      status: finalStatus,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('user_id', userId)
+    .eq('boss_id', bossId);
+  if (error) throw error;
+  return { bossId, currentHp: clampedHp, status: finalStatus };
+};
+
+module.exports = { clearSupabaseClientForTest, findBossState, setSupabaseClientForTest, updateBossHp };

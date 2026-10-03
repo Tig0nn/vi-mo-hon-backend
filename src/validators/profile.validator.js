@@ -119,6 +119,7 @@ const profileCreateSchema = z.object({
   targetDate: targetDateSchema,
   triggers: triggersSchema,
   preferredTone: preferredToneSchema.default("funny"),
+  characterId: z.string().trim().max(64).optional(),
 });
 
 const profileUpdateSchema = z
@@ -135,6 +136,9 @@ const profileUpdateSchema = z
     targetDate: targetDateSchema.optional(),
     triggers: triggersSchema.optional(),
     preferredTone: preferredToneSchema.optional(),
+    characterId: z.string().trim().max(64).optional(),
+    monthly_limit: z.number().optional(),
+    financial_goal: z.string().optional(),
   })
   .strict(
     "Không được gửi userId hoặc field không được hỗ trợ khi cập nhật Profile.",

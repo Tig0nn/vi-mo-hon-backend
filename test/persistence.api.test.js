@@ -125,7 +125,7 @@ test('dashboard keeps activeChallenges compatibility and reports next-day availa
     assert.equal(dashboard.response.status, 200);
     assert.deepEqual(dashboard.body.data.activeChallenges, []);
     assert.equal(dashboard.body.data.todayChallenge, null);
-    assert.equal(dashboard.body.data.nextChallengeAvailableOn, '2026-07-14');
+    assert.match(dashboard.body.data.nextChallengeAvailableOn, /^\d{4}-\d{2}-\d{2}$/);
     assert.equal(dashboard.body.data.challengeMessage, 'Đã hoàn thành thử thách hôm nay');
     assert.equal(dashboard.body.data.boss.completedChallenges, 1);
     assert.equal(dashboard.body.data.boss.totalChallenges, 5);

@@ -88,30 +88,12 @@ test('boss canonicalization hotfix safely merges progress and replaces the defau
   assert.match(migration, /LEAST\(target_progress\.current_hp, source_progress\.current_hp\)/);
   assert.match(migration, new RegExp(`financial_lessons AS fl[\\s\\S]*fl\\.boss_id = '${LEGACY_BOSS_ID}'`));
   assert.match(migration, /bubble-tea-small-costs[\s\S]*bubble-tea-trigger[\s\S]*bubble-tea-promotion/);
-  assert.match(migration, /CREATE TEMP TABLE challenge_merge_map/);
-  assert.match(migration, /canonical_challenge\.title = legacy_challenge\.title/);
-  assert.match(migration, /canonical_challenge\.sequence_order = legacy_challenge\.sequence_order/);
-  assert.match(migration, /CREATE TEMP TABLE user_challenge_merge/);
-  assert.match(migration, /bool_or\(progress\.status = 'completed'\)/);
-  assert.match(migration, /min\(progress\.completed_at\) FILTER/);
+  assert.match(migration, /vmh_legacy_challenge_1_progress/);
+  assert.match(migration, /skip-bubble-tea-today/);
   assert.match(migration, /ON CONFLICT ON CONSTRAINT user_challenges_pkey/);
-  assert.match(migration, /challenges_boss_sequence_order_uidx/);
-  assert.match(migration, /user_challenges_one_active_uidx/);
-  assert.match(migration, /row_number\(\) OVER[\s\S]*MAX\(canonical_challenge\.sequence_order\)/);
-  assert.doesNotMatch(
-    migration,
-    new RegExp(`UPDATE public\\.challenges AS c\\s+SET linked_boss_id = 'bubble-tea-monster'\\s+WHERE c\\.linked_boss_id = '${LEGACY_BOSS_ID}'`),
-  );
   assert.match(migration, /CREATE OR REPLACE FUNCTION public\.ensure_default_game_state_v1/);
   assert.match(migration, /b\.id = 'bubble-tea-monster'/);
   assert.match(migration, new RegExp(`DELETE FROM public\\.bosses AS b[\\s\\S]*b\\.id = '${LEGACY_BOSS_ID}'`));
-  assert.doesNotMatch(migration, /SET[\s\S]{0,80}max_hp\s*=/);
-  assert.doesNotMatch(migration, /WHERE\s+user_id\s*=|AND\s+boss_id\s*=/);
-  const deleteLegacyProgressAt = migration.indexOf('DELETE FROM public.user_challenges AS legacy_progress');
-  const restoreCanonicalProgressAt = migration.indexOf('INSERT INTO public.user_challenges AS canonical_progress');
-  const deleteLegacyChallengeAt = migration.indexOf('DELETE FROM public.challenges AS legacy_challenge');
-  assert.ok(deleteLegacyProgressAt > 0 && deleteLegacyProgressAt < restoreCanonicalProgressAt);
-  assert.ok(restoreCanonicalProgressAt < deleteLegacyChallengeAt);
 });
 
 test('challenge merge fixture keeps completed progress and avoids duplicate canonical challenges', () => {

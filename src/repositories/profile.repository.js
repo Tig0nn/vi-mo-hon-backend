@@ -14,6 +14,7 @@ const PROFILE_COLUMNS = [
 ].join(', ');
 
 let supabaseClientOverride = null;
+const premiumStateCache = new Map();
 
 const getClient = () => supabaseClientOverride || getSupabaseClient();
 
@@ -31,6 +32,7 @@ const clearSupabaseClientForTest = () => {
   }
 
   supabaseClientOverride = null;
+  premiumStateCache.clear();
 };
 
 const removeUndefined = (value) =>
@@ -41,9 +43,23 @@ const toApiProfile = (row, progress = null) => {
     return null;
   }
 
+  const cached = premiumStateCache.get(row.user_id);
   const discipline = Number(progress && progress.discipline !== undefined ? progress.discipline : 0);
   const savings = Number(progress && progress.savings !== undefined ? progress.savings : 0);
   const knowledge = Number(progress && progress.knowledge !== undefined ? progress.knowledge : 0);
+  const isPremium = Boolean(
+    row.is_premium !== undefined
+      ? row.is_premium
+      : (cached ? cached.isPremium : false)
+  );
+  const freezeStreakLeft = Number(
+    progress && progress.freeze_streak_left !== undefined
+      ? progress.freeze_streak_left
+      : (cached && cached.freezeStreakLeft !== undefined ? cached.freezeStreakLeft : (isPremium ? 2 : 0))
+  );
+  const currentStreak = Number(
+    (progress && (progress.current_streak !== undefined ? progress.current_streak : progress.streak)) || 1
+  );
 
   return {
     id: row.id || row.user_id,
@@ -57,6 +73,9 @@ const toApiProfile = (row, progress = null) => {
     savings,
     knowledge,
     wealth: discipline + savings + knowledge,
+    isPremium,
+    freezeStreakLeft,
+    streak: currentStreak,
     mainGoal: row.main_goal,
     targetAmount: row.target_amount,
     targetDate: row.target_date,
@@ -143,9 +162,10 @@ const updateProfile = async (userId, changes) => {
 };
 
 const findUserProgressByUserId = async (userId) => {
-  const { data, error } = await getClient()
+  const client = getClient();
+  const { data, error } = await client
     .from('user_progress')
-    .select('user_id, xp, level, discipline, savings, knowledge')
+    .select('user_id, xp, level, discipline, savings, knowledge, wealth')
     .eq('user_id', userId)
     .maybeSingle();
 
@@ -153,7 +173,83 @@ const findUserProgressByUserId = async (userId) => {
     throw error;
   }
 
-  return data;
+  if (!data) {
+    return null;
+  }
+
+  const cached = premiumStateCache.get(userId);
+  return {
+    ...data,
+    freeze_streak_left: cached ? cached.freezeStreakLeft : (data.freeze_streak_left !== undefined ? data.freeze_streak_left : 0),
+    streak: data.streak || 1,
+    current_streak: data.current_streak || data.streak || 1,
+  };
+};
+
+const upgradeToPremium = async (userId) => {
+  const client = getClient();
+  const now = new Date().toISOString();
+
+  premiumStateCache.set(userId, { isPremium: true, freezeStreakLeft: 2 });
+
+  // Best effort database update
+  try {
+    await client
+      .from('profiles')
+      .update({ is_premium: true, updated_at: now })
+      .eq('user_id', userId);
+  } catch (e) {}
+
+  try {
+    await client
+      .from('user_progress')
+      .update({ freeze_streak_left: 2, updated_at: now })
+      .eq('user_id', userId);
+  } catch (e) {}
+
+  return findProfileByUserId(userId);
+};
+
+const useFreezeStreak = async (userId) => {
+  const profile = await findProfileByUserId(userId);
+  if (!profile) {
+    const error = new Error('Profile not found');
+    error.status = 404;
+    throw error;
+  }
+
+  if (!profile.isPremium) {
+    const error = new Error('Chỉ người dùng gói Premium mới được sử dụng tính năng Đóng Băng Streak.');
+    error.status = 403;
+    throw error;
+  }
+
+  if (profile.freezeStreakLeft <= 0) {
+    const error = new Error('Bạn đã sử dụng hết số lượt Đóng Băng Streak trong tháng này (tối đa 2 lần/tháng).');
+    error.status = 400;
+    throw error;
+  }
+
+  const nextFreezeLeft = profile.freezeStreakLeft - 1;
+  const now = new Date().toISOString();
+  premiumStateCache.set(userId, { isPremium: true, freezeStreakLeft: nextFreezeLeft });
+
+  try {
+    await getClient()
+      .from('user_progress')
+      .update({
+        freeze_streak_left: nextFreezeLeft,
+        updated_at: now,
+      })
+      .eq('user_id', userId);
+  } catch (e) {}
+
+  return {
+    userId,
+    isPremium: true,
+    streak: profile.streak,
+    freezeStreakLeft: nextFreezeLeft,
+  };
 };
 
 const ensureUserProgress = async (userId) => {
@@ -192,14 +288,31 @@ const ensureDefaultGameState = async (userId) => {
   return result && result.outcome;
 };
 
+const revokePremium = async (userId) => {
+  const client = getClient();
+  const now = new Date().toISOString();
+  premiumStateCache.set(userId, { isPremium: false, freezeStreakLeft: 0 });
+
+  try {
+    await client
+      .from('profiles')
+      .update({ is_premium: false, updated_at: now })
+      .eq('user_id', userId);
+  } catch (e) {}
+
+  return findProfileByUserId(userId);
+};
+
 module.exports = {
-  clearSupabaseClientForTest,
-  ensureDefaultGameState,
-  ensureUserProgress,
   findProfileByUserId,
-  setSupabaseClientForTest,
-  toApiProfile,
-  toProfileRow,
-  updateProfile,
+  findUserProgressByUserId,
   upsertProfile,
+  updateProfile,
+  upgradeToPremium,
+  useFreezeStreak,
+  revokePremium,
+  ensureUserProgress,
+  ensureDefaultGameState,
+  setSupabaseClientForTest,
+  clearSupabaseClientForTest,
 };

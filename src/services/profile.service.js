@@ -78,8 +78,42 @@ const updateProfile = async (userId, updates) => {
   return profile;
 };
 
+const upgradeToPremium = async (userId) => {
+  await getProfile(userId);
+
+  try {
+    return await profileRepository.upgradeToPremium(userId);
+  } catch (error) {
+    if (error.status) throw error;
+    handleDatabaseError(error);
+  }
+};
+
+const useFreezeStreak = async (userId) => {
+  try {
+    return await profileRepository.useFreezeStreak(userId);
+  } catch (error) {
+    if (error.status) throw error;
+    handleDatabaseError(error);
+  }
+};
+
+const revokePremium = async (userId) => {
+  await getProfile(userId);
+
+  try {
+    return await profileRepository.revokePremium(userId);
+  } catch (error) {
+    if (error.status) throw error;
+    handleDatabaseError(error);
+  }
+};
+
 module.exports = {
   createProfile,
   getProfile,
+  revokePremium,
   updateProfile,
+  upgradeToPremium,
+  useFreezeStreak,
 };

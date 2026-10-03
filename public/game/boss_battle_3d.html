@@ -1,0 +1,1385 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Ví Mỏ Hỗn - 3D Boss Battle Arena</title>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      user-select: none;
+      -webkit-user-select: none;
+      -webkit-touch-callout: none;
+    }
+    body, html {
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: #090d16;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+    }
+    #battle-canvas {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      display: block;
+      z-index: 1;
+    }
+    /* NEO-BRUTALISM HUD OVERLAYS */
+    .hud-layer {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+      z-index: 10;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      padding: 12px;
+    }
+    .top-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 8px;
+    }
+    .combatant-card {
+      background: #FFFDF8;
+      border: 3px solid #121212;
+      box-shadow: 4px 4px 0 #121212;
+      border-radius: 12px;
+      padding: 8px 12px;
+      min-width: 135px;
+      max-width: 48%;
+      pointer-events: auto;
+    }
+    .player-card {
+      border-left: 6px solid #10B981;
+    }
+    .boss-card {
+      border-right: 6px solid #EF4444;
+      text-align: right;
+    }
+    .combatant-title {
+      font-size: 11px;
+      font-weight: 800;
+      color: #64748B;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .combatant-name {
+      font-size: 13px;
+      font-weight: 900;
+      color: #121212;
+      margin-bottom: 4px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .hp-bar-bg {
+      width: 100%;
+      height: 12px;
+      background: #E2E8F0;
+      border: 2px solid #121212;
+      border-radius: 999px;
+      overflow: hidden;
+      position: relative;
+    }
+    .hp-bar-fill {
+      height: 100%;
+      background: #10B981;
+      width: 100%;
+      transition: width 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+    .boss-hp-fill {
+      background: #EF4444;
+      margin-left: auto;
+    }
+    .hp-text {
+      font-size: 10px;
+      font-weight: 900;
+      color: #121212;
+      margin-top: 2px;
+    }
+    .shield-badge {
+      display: inline-block;
+      background: #00F0FF;
+      color: #121212;
+      border: 1.5px solid #121212;
+      border-radius: 6px;
+      padding: 1px 4px;
+      font-size: 9px;
+      font-weight: 900;
+      margin-top: 2px;
+    }
+
+    /* CENTER ROUND & STATUS BANNER */
+    .center-announcer {
+      position: absolute;
+      top: 72px;
+      left: 50%;
+      transform: translateX(-50%);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 6px;
+      pointer-events: none;
+      width: 90%;
+      max-width: 400px;
+    }
+    .round-pill {
+      background: #FFE600;
+      border: 2.5px solid #121212;
+      box-shadow: 2px 2px 0 #121212;
+      border-radius: 999px;
+      padding: 3px 12px;
+      font-size: 11px;
+      font-weight: 900;
+      color: #121212;
+      text-transform: uppercase;
+    }
+    .battle-toast {
+      background: #121212;
+      color: #FFFDF8;
+      border: 2.5px solid #FFE600;
+      box-shadow: 3px 3px 0 #000;
+      border-radius: 10px;
+      padding: 6px 14px;
+      font-size: 12px;
+      font-weight: 800;
+      text-align: center;
+      opacity: 0;
+      transform: translateY(-8px);
+      transition: all 0.25s ease-out;
+    }
+    .battle-toast.visible {
+      opacity: 1;
+      transform: translateY(0);
+    }
+    .critical-banner {
+      background: #FEF08A;
+      color: #854D0E;
+      border: 2px solid #CA8A04;
+      border-radius: 8px;
+      padding: 4px 8px;
+      font-size: 11px;
+      font-weight: 900;
+      display: none;
+      animation: pulse 1s infinite alternate;
+    }
+    @keyframes pulse {
+      from { transform: scale(0.96); }
+      to { transform: scale(1.04); }
+    }
+
+    /* BOTTOM SKILL DECK BAR */
+    .deck-container {
+      pointer-events: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      width: 100%;
+      max-width: 520px;
+      margin: 0 auto;
+    }
+    .deck-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      background: rgba(18, 18, 18, 0.85);
+      border: 2px solid #FFFDF8;
+      border-radius: 8px;
+      padding: 4px 10px;
+      color: #FFF;
+      font-size: 11px;
+      font-weight: 800;
+    }
+    .deck-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
+    }
+    .skill-card-btn {
+      background: #FFFDF8;
+      border: 3px solid #121212;
+      box-shadow: 3px 3px 0 #121212;
+      border-radius: 12px;
+      padding: 8px 6px;
+      cursor: pointer;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      text-align: center;
+      gap: 3px;
+      transition: transform 0.1s ease, box-shadow 0.1s ease;
+      position: relative;
+      outline: none;
+    }
+    .skill-card-btn:hover {
+      transform: translateY(-2px);
+      box-shadow: 4px 4px 0 #121212;
+    }
+    .skill-card-btn:active {
+      transform: translate(2px, 2px);
+      box-shadow: 1px 1px 0 #121212;
+    }
+    .skill-card-btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+      transform: none;
+      box-shadow: 2px 2px 0 #121212;
+    }
+    .card-icon {
+      font-size: 24px;
+      line-height: 1;
+    }
+    .card-name {
+      font-size: 11px;
+      font-weight: 900;
+      color: #121212;
+      line-height: 1.1;
+      height: 24px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .card-dmg-badge {
+      font-size: 10px;
+      font-weight: 900;
+      background: #FFE600;
+      border: 1.5px solid #121212;
+      border-radius: 999px;
+      padding: 1px 6px;
+      color: #121212;
+    }
+    .weakness-tag {
+      position: absolute;
+      top: -6px;
+      right: -4px;
+      background: #EF4444;
+      color: #FFF;
+      font-size: 8px;
+      font-weight: 900;
+      border: 1.5px solid #121212;
+      border-radius: 999px;
+      padding: 1px 4px;
+      letter-spacing: 0.2px;
+    }
+
+    /* FLASH & PARTICLES OVERLAY */
+    .flash-overlay {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+      background: #FFF;
+      opacity: 0;
+      z-index: 5;
+      transition: opacity 0.2s ease-out;
+    }
+
+    /* MODAL POPUPS (VICTORY / DEFEAT) */
+    .modal-overlay {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(15, 23, 42, 0.85);
+      z-index: 20;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+    .neo-card {
+      background: #FFFDF8;
+      border: 4px solid #121212;
+      box-shadow: 6px 6px 0 #121212;
+      border-radius: 16px;
+      padding: 22px 18px;
+      width: 100%;
+      max-width: 360px;
+      text-align: center;
+    }
+    .card-title {
+      font-size: 20px;
+      font-weight: 900;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 6px;
+      color: #121212;
+    }
+    .card-subtitle {
+      font-size: 13px;
+      font-weight: 600;
+      color: #64748B;
+      margin-bottom: 16px;
+      line-height: 1.4;
+    }
+    .roast-bubble {
+      background: #FEF3C7;
+      border: 2px solid #121212;
+      border-radius: 10px;
+      padding: 10px;
+      font-size: 12px;
+      font-weight: 700;
+      color: #92400E;
+      margin-bottom: 16px;
+      line-height: 1.4;
+    }
+    .stats-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      margin-bottom: 16px;
+    }
+    .stat-box {
+      background: #F8FAFC;
+      border: 2px solid #121212;
+      border-radius: 8px;
+      padding: 8px;
+    }
+    .stat-label {
+      font-size: 10px;
+      font-weight: 800;
+      color: #64748B;
+      text-transform: uppercase;
+    }
+    .stat-val {
+      font-size: 16px;
+      font-weight: 900;
+      color: #121212;
+      margin-top: 2px;
+    }
+    .neo-btn {
+      width: 100%;
+      background: #FFE600;
+      border: 3px solid #121212;
+      box-shadow: 4px 4px 0 #121212;
+      border-radius: 12px;
+      padding: 12px;
+      font-size: 15px;
+      font-weight: 900;
+      text-transform: uppercase;
+      color: #121212;
+      cursor: pointer;
+      display: block;
+    }
+    .neo-btn:active {
+      transform: translate(2px, 2px);
+      box-shadow: 2px 2px 0 #121212;
+    }
+  </style>
+  <script src="./three.min.js"></script>
+</head>
+<body>
+  <div class="flash-overlay" id="flash-overlay"></div>
+  <canvas id="battle-canvas"></canvas>
+
+  <!-- HUD IN-GAME -->
+  <div class="hud-layer">
+    <!-- TOP COMBATANTS BAR -->
+    <div class="top-header">
+      <!-- Player Card -->
+      <div class="combatant-card player-card">
+        <div class="combatant-title">Chiến Binh Ví</div>
+        <div class="combatant-name" id="player-name">🐱 Mèo Chiêu Tài</div>
+        <div class="hp-bar-bg">
+          <div class="hp-bar-fill" id="player-hp-bar" style="width: 100%;"></div>
+        </div>
+        <div class="hp-text" id="player-hp-text">100 / 100 HP</div>
+        <div class="shield-badge" id="player-shield-badge" style="display: none;">🛡️ KHIÊN: 30</div>
+      </div>
+
+      <!-- Boss Card -->
+      <div class="combatant-card boss-card">
+        <div class="combatant-title">Thủ Lĩnh Cám Dỗ</div>
+        <div class="combatant-name" id="boss-name">🧋 Quái Trà Sữa</div>
+        <div class="hp-bar-bg">
+          <div class="hp-bar-fill boss-hp-fill" id="boss-hp-bar" style="width: 100%;"></div>
+        </div>
+        <div class="hp-text" id="boss-hp-text">100 / 100 HP</div>
+        <div class="shield-badge" id="boss-stun-badge" style="display: none; background: #60A5FA;">❄️ CHOÁNG</div>
+      </div>
+    </div>
+
+    <!-- CENTER STATUS -->
+    <div class="center-announcer">
+      <div class="round-pill" id="round-indicator">HIỆP 1 - LƯỢT CỦA BẠN</div>
+      <div class="critical-banner" id="critical-banner">💥 ĐÒN KHẮC CHẾ TÀI CHÍNH! SÁT THƯƠNG X2!</div>
+      <div class="battle-toast" id="battle-toast">Chọn 1 Thẻ Kỹ Năng từ túi đồ để phản kích!</div>
+    </div>
+
+    <!-- BOTTOM DECK BAR -->
+    <div class="deck-container">
+      <div class="deck-header">
+        <span>🎒 BỘ THẺ KỸ NĂNG (SKILL DECK)</span>
+        <span id="turn-hint">⚡ Chọn thẻ để tung chiêu!</span>
+      </div>
+      <div class="deck-grid" id="deck-grid">
+        <!-- Injected via JavaScript -->
+      </div>
+    </div>
+  </div>
+
+  <!-- VICTORY MODAL -->
+  <div class="modal-overlay" id="victory-modal" style="display: none;">
+    <div class="neo-card" style="background: #ECFDF5; border-color: #059669;">
+      <div style="font-size: 46px; margin-bottom: 6px;">🏆✨</div>
+      <h2 class="card-title" style="color: #059669;">HẠ GỤC BOSS THÀNH CÔNG!</h2>
+      <div class="roast-bubble" style="background: #D1FAE5; color: #065F46; border-color: #059669;">
+        "Đòn phản kích tài chính thông minh đã bẻ gãy mọi cám dỗ! Ví tiền của bạn được bảo vệ toàn vẹn!"
+      </div>
+      <div class="stats-grid">
+        <div class="stat-box">
+          <div class="stat-label">Số Hiệp Đấu</div>
+          <div class="stat-val" id="res-turns">3 Hiệp</div>
+        </div>
+        <div class="stat-box">
+          <div class="stat-label">Tổng Sát Thương</div>
+          <div class="stat-val" id="res-damage-dealt">110 HP</div>
+        </div>
+      </div>
+      <button class="neo-btn" id="btn-victory-claim" style="background: #10B981; color: #FFF;">NHẬN THƯỞNG & ĐÓNG ➔</button>
+    </div>
+  </div>
+
+  <!-- DEFEAT MODAL -->
+  <div class="modal-overlay" id="defeat-modal" style="display: none;">
+    <div class="neo-card" style="background: #FFF1F2; border-color: #E11D48;">
+      <div style="font-size: 46px; margin-bottom: 6px;">💀💥</div>
+      <h2 class="card-title" style="color: #E11D48;">CÁM DỖ ĐÃ THẮNG BẠN!</h2>
+      <div class="roast-bubble" style="background: #FFE4E6; color: #9F1239; border-color: #E11D48;">
+        "Cơn thèm bốc đồng đã áp đảo ví tiền! Hãy quay lại Runner 3D để săn thêm Thẻ Kỹ Năng và đọc kỹ lại bài học nhé!"
+      </div>
+      <div class="stats-grid">
+        <div class="stat-box">
+          <div class="stat-label">Máu Boss Còn</div>
+          <div class="stat-val" id="res-boss-hp-left">45 HP</div>
+        </div>
+        <div class="stat-box">
+          <div class="stat-label">Sát Thương Gây Ra</div>
+          <div class="stat-val" id="res-defeat-damage">55 HP</div>
+        </div>
+      </div>
+      <button class="neo-btn" id="btn-defeat-retry" style="background: #EF4444; color: #FFF;">THỬ LẠI CHIẾN DỊCH</button>
+    </div>
+  </div>
+
+  <script>
+    /* ==========================================================
+       VÍ MỎ HỖN: 3D BOSS BATTLE ARENA ENGINE (THREE.JS)
+       Hexagonal Arena, Chibi Mascot vs Boss, Turn-based RPG Logic
+       ========================================================== */
+
+    // 1. SOUND SYNTHESIZER
+    class BattleSoundSynth {
+      constructor() {
+        this.ctx = null;
+      }
+      init() {
+        if (!this.ctx) {
+          const AudioContext = window.AudioContext || window.webkitAudioContext;
+          if (AudioContext) this.ctx = new AudioContext();
+        }
+        if (this.ctx && this.ctx.state === 'suspended') {
+          this.ctx.resume();
+        }
+      }
+      playAttack() {
+        if (!this.ctx) return;
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(320, this.ctx.currentTime);
+        osc.frequency.exponentialRampToValueAtTime(740, this.ctx.currentTime + 0.15);
+        gain.gain.setValueAtTime(0.3, this.ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + 0.15);
+        osc.connect(gain);
+        gain.connect(this.ctx.destination);
+        osc.start();
+        osc.stop(this.ctx.currentTime + 0.15);
+      }
+      playCrit() {
+        if (!this.ctx) return;
+        [523, 659, 784, 1046].forEach((f, idx) => {
+          const osc = this.ctx.createOscillator();
+          const gain = this.ctx.createGain();
+          osc.type = 'sawtooth';
+          osc.frequency.setValueAtTime(f, this.ctx.currentTime + idx * 0.05);
+          gain.gain.setValueAtTime(0.25, this.ctx.currentTime + idx * 0.05);
+          gain.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + idx * 0.05 + 0.18);
+          osc.connect(gain);
+          gain.connect(this.ctx.destination);
+          osc.start(this.ctx.currentTime + idx * 0.05);
+          osc.stop(this.ctx.currentTime + idx * 0.05 + 0.18);
+        });
+      }
+      playBossHit() {
+        if (!this.ctx) return;
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.type = 'sawtooth';
+        osc.frequency.setValueAtTime(140, this.ctx.currentTime);
+        osc.frequency.exponentialRampToValueAtTime(50, this.ctx.currentTime + 0.25);
+        gain.gain.setValueAtTime(0.35, this.ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + 0.25);
+        osc.connect(gain);
+        gain.connect(this.ctx.destination);
+        osc.start();
+        osc.stop(this.ctx.currentTime + 0.25);
+      }
+      playShield() {
+        if (!this.ctx) return;
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(440, this.ctx.currentTime);
+        osc.frequency.exponentialRampToValueAtTime(880, this.ctx.currentTime + 0.2);
+        gain.gain.setValueAtTime(0.25, this.ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + 0.2);
+        osc.connect(gain);
+        gain.connect(this.ctx.destination);
+        osc.start();
+        osc.stop(this.ctx.currentTime + 0.2);
+      }
+      playVictory() {
+        if (!this.ctx) return;
+        [440, 554, 659, 880, 1108].forEach((f, idx) => {
+          const osc = this.ctx.createOscillator();
+          const gain = this.ctx.createGain();
+          osc.type = 'triangle';
+          osc.frequency.setValueAtTime(f, this.ctx.currentTime + idx * 0.09);
+          gain.gain.setValueAtTime(0.25, this.ctx.currentTime + idx * 0.09);
+          gain.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + idx * 0.09 + 0.25);
+          osc.connect(gain);
+          gain.connect(this.ctx.destination);
+          osc.start(this.ctx.currentTime + idx * 0.09);
+          osc.stop(this.ctx.currentTime + idx * 0.09 + 0.25);
+        });
+      }
+      playDefeat() {
+        if (!this.ctx) return;
+        [300, 260, 220, 180].forEach((f, idx) => {
+          const osc = this.ctx.createOscillator();
+          const gain = this.ctx.createGain();
+          osc.type = 'sawtooth';
+          osc.frequency.setValueAtTime(f, this.ctx.currentTime + idx * 0.12);
+          gain.gain.setValueAtTime(0.25, this.ctx.currentTime + idx * 0.12);
+          gain.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + idx * 0.12 + 0.25);
+          osc.connect(gain);
+          gain.connect(this.ctx.destination);
+          osc.start(this.ctx.currentTime + idx * 0.12);
+          osc.stop(this.ctx.currentTime + idx * 0.12 + 0.25);
+        });
+      }
+    }
+    const audio = new BattleSoundSynth();
+
+    // 2. SKILL DATA REGISTRY (9 Skills for 3 Chapters)
+    const SKILLS_REGISTRY = {
+      water_splash: {
+        id: 'water_splash', name: 'Cú Tát Nước Lọc 💧', chapterId: 'chapter-1',
+        weaknessChapterId: 'chapter-1', damage: 35, defense: 0, stun: false,
+        icon: '💧', color: '#38BDF8', tag: 'X2 VS CH1'
+      },
+      cold_tumbler: {
+        id: 'cold_tumbler', name: 'Bình Giữ Nhiệt 🥤', chapterId: 'chapter-1',
+        weaknessChapterId: null, damage: 15, defense: 30, stun: false,
+        icon: '🥤', color: '#10B981', tag: '+30 SHIELD'
+      },
+      freeze_delay: {
+        id: 'freeze_delay', name: 'Đóng Băng 24h ❄️', chapterId: 'chapter-1',
+        weaknessChapterId: null, damage: 20, defense: 10, stun: true,
+        icon: '❄️', color: '#60A5FA', tag: 'STUN BOSS'
+      },
+      cart_purge: {
+        id: 'cart_purge', name: 'Xóa Giỏ Hàng 🗑️', chapterId: 'chapter-2',
+        weaknessChapterId: 'chapter-2', damage: 45, defense: 10, stun: false,
+        icon: '🗑️', color: '#F97316', tag: 'X2 VS CH2'
+      },
+      freeship_breaker: {
+        id: 'freeship_breaker', name: 'Búa Phá Freeship 🔨', chapterId: 'chapter-2',
+        weaknessChapterId: null, damage: 40, defense: 15, stun: false,
+        icon: '🔨', color: '#EAB308', tag: '-30% ATK'
+      },
+      order_cancel: {
+        id: 'order_cancel', name: 'Tẩy Não Hủy Đơn ❌', chapterId: 'chapter-2',
+        weaknessChapterId: null, damage: 25, defense: 25, stun: false,
+        icon: '❌', color: '#EF4444', tag: 'PHẢN ĐÒN 50%'
+      },
+      golden_slash: {
+        id: 'golden_slash', name: 'Chém 50/30/20 ⚔️', chapterId: 'chapter-3',
+        weaknessChapterId: 'chapter-3', damage: 60, defense: 0, stun: false,
+        icon: '⚔️', color: '#EC4899', tag: 'X2 VS CH3'
+      },
+      credit_cut: {
+        id: 'credit_cut', name: 'Kéo Cắt Thẻ ✂️', chapterId: 'chapter-3',
+        weaknessChapterId: null, damage: 30, defense: 20, stun: false,
+        icon: '✂️', color: '#8B5CF6', tag: '-50% ATK'
+      },
+      emergency_fund: {
+        id: 'emergency_fund', name: 'Quỹ Bất Tử 🛡️', chapterId: 'chapter-3',
+        weaknessChapterId: null, damage: 10, defense: 40, heal: 35, stun: false,
+        icon: '🛡️', color: '#14B8A6', tag: 'HỒI 35 HP'
+      }
+    };
+
+    // 3. BATTLE STATE
+    const state = {
+      chapterId: 'chapter-1',
+      avatarId: 'cat',
+      round: 1,
+      isPlayerTurn: true,
+      isActing: false,
+      isBattleOver: false,
+      playerMaxHp: 100,
+      playerHp: 100,
+      playerShield: 0,
+      bossMaxHp: 100,
+      bossHp: 100,
+      bossAttack: 18,
+      bossName: 'Quái Vật Trà Sữa',
+      bossIcon: '🧋',
+      bossStunned: false,
+      equippedSkills: ['water_splash', 'cold_tumbler', 'freeze_delay'],
+      totalDamageDealt: 0
+    };
+
+    // 4. THREE.JS SCENE SETUP
+    const canvas = document.getElementById('battle-canvas');
+    const renderer = new THREE.WebGLRenderer({
+      canvas: canvas,
+      antialias: true,
+      powerPreference: 'high-performance'
+    });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x0a0f1d);
+    scene.fog = new THREE.Fog(0x0a0f1d, 15, 45);
+
+    const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 100);
+    camera.position.set(0, 5.5, 11);
+    camera.lookAt(0, 1.2, 0);
+
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.8);
+    scene.add(ambientLight);
+
+    const keyLight = new THREE.DirectionalLight(0xffe600, 1.1);
+    keyLight.position.set(-6, 12, 8);
+    scene.add(keyLight);
+
+    const rimLight = new THREE.DirectionalLight(0x00f0ff, 0.9);
+    rimLight.position.set(6, 10, -6);
+    scene.add(rimLight);
+
+    // 5. HEXAGONAL ARENA
+    const arenaGroup = new THREE.Group();
+    const hexRadius = 6.2;
+    const hexGeo = new THREE.CylinderGeometry(hexRadius, hexRadius, 0.6, 6);
+    const hexMat = new THREE.MeshToonMaterial({ color: 0x1e293b });
+    const arenaPlatform = new THREE.Mesh(hexGeo, hexMat);
+    arenaPlatform.position.y = -0.3;
+    arenaGroup.add(arenaPlatform);
+
+    // Golden Border Ring
+    const borderGeo = new THREE.CylinderGeometry(hexRadius + 0.15, hexRadius + 0.15, 0.65, 6);
+    const borderMat = new THREE.MeshBasicMaterial({ color: 0xFFE600, wireframe: true });
+    const arenaBorder = new THREE.Mesh(borderGeo, borderMat);
+    arenaBorder.position.y = -0.3;
+    arenaGroup.add(arenaBorder);
+
+    // Hexagonal Arena Corner Beacon Pillars
+    const pillarGroup = new THREE.Group();
+    for (let i = 0; i < 6; i++) {
+      const angle = (i * Math.PI / 3) + Math.PI / 6;
+      const px = Math.cos(angle) * (hexRadius - 0.2);
+      const pz = Math.sin(angle) * (hexRadius - 0.2);
+      const colMesh = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.18, 0.25, 2.6, 8),
+        new THREE.MeshToonMaterial({ color: 0x1E293B })
+      );
+      colMesh.position.set(px, 1.3, pz);
+      pillarGroup.add(colMesh);
+
+      const gemMesh = new THREE.Mesh(
+        new THREE.OctahedronGeometry(0.3, 0),
+        new THREE.MeshBasicMaterial({ color: 0xFFE600 })
+      );
+      gemMesh.position.set(px, 2.75, pz);
+      pillarGroup.add(gemMesh);
+    }
+    arenaGroup.add(pillarGroup);
+
+    // Spotlight Center Circle
+    const spotGeo = new THREE.CircleGeometry(2.4, 32);
+    const spotMat = new THREE.MeshBasicMaterial({ color: 0xFFE600, transparent: true, opacity: 0.12 });
+    const spotMesh = new THREE.Mesh(spotGeo, spotMat);
+    spotMesh.rotation.x = -Math.PI / 2;
+    spotMesh.position.y = 0.01;
+    arenaGroup.add(spotMesh);
+
+    scene.add(arenaGroup);
+
+    // 5.5 DYNAMIC BACKGROUND SCENERY BACKDROP
+    const backdropSceneryGroup = new THREE.Group();
+    scene.add(backdropSceneryGroup);
+
+    function updateArenaScenery(chapterId) {
+      while (backdropSceneryGroup.children.length > 0) {
+        backdropSceneryGroup.remove(backdropSceneryGroup.children[0]);
+      }
+
+      if (chapterId === 'chapter-2') {
+        scene.background.setHex(0x271038);
+        scene.fog.color.setHex(0x271038);
+        keyLight.color.setHex(0xFF9E79);
+
+        // Mega Sale Stage Scaffolding & LED Screen
+        const board = new THREE.Mesh(new THREE.BoxGeometry(11.0, 4.2, 0.4), new THREE.MeshToonMaterial({ color: 0xEA580C }));
+        board.position.set(0, 4.6, -7.5);
+        backdropSceneryGroup.add(board);
+        const led = new THREE.Mesh(new THREE.PlaneGeometry(10.2, 3.4), new THREE.MeshBasicMaterial({ color: 0xFDE047 }));
+        led.position.set(0, 4.6, -7.28);
+        backdropSceneryGroup.add(led);
+
+        [-5.8, 5.8].forEach(tx => {
+          const truss = new THREE.Mesh(new THREE.BoxGeometry(0.7, 9.5, 0.7), new THREE.MeshToonMaterial({ color: 0x1E293B }));
+          truss.position.set(tx, 4.75, -7.5);
+          backdropSceneryGroup.add(truss);
+        });
+      } else if (chapterId === 'chapter-3') {
+        scene.background.setHex(0x0a051d);
+        scene.fog.color.setHex(0x0a051d);
+        keyLight.color.setHex(0xC084FC);
+
+        // Cyberpunk Skyline with illuminated window stripes
+        [-7.2, 0, 7.2].forEach((bx, idx) => {
+          const h = 13 + idx * 2.5;
+          const tw = new THREE.Mesh(new THREE.BoxGeometry(5.2, h, 4.0), new THREE.MeshToonMaterial({ color: 0x1E1B4B }));
+          tw.position.set(bx, h / 2 - 1.5, -9.5);
+          backdropSceneryGroup.add(tw);
+          for (let wy = 2.0; wy < h; wy += 2.2) {
+            const win = new THREE.Mesh(new THREE.PlaneGeometry(4.8, 0.55), new THREE.MeshBasicMaterial({ color: (Math.round(wy) % 2 === 0) ? 0x00F0FF : 0xEC4899 }));
+            win.position.set(bx, wy - 1.5, -7.48);
+            backdropSceneryGroup.add(win);
+          }
+        });
+      } else {
+        scene.background.setHex(0x0a0f1d);
+        scene.fog.color.setHex(0x0a0f1d);
+        keyLight.color.setHex(0xFFE600);
+
+        // Chapter 1 Night Food Street: Stalls, Pagoda Roofs, Lanterns
+        [-5.2, 5.2].forEach((sx) => {
+          const stall = new THREE.Mesh(new THREE.BoxGeometry(4.6, 3.6, 3.5), new THREE.MeshToonMaterial({ color: 0x334155 }));
+          stall.position.set(sx, 1.8, -7.5);
+          backdropSceneryGroup.add(stall);
+          const roof = new THREE.Mesh(new THREE.ConeGeometry(3.6, 1.8, 4), new THREE.MeshToonMaterial({ color: 0xDC2626 }));
+          roof.position.set(sx, 4.3, -7.5);
+          roof.rotation.y = Math.PI / 4;
+          backdropSceneryGroup.add(roof);
+        });
+        const decoCup = new THREE.Mesh(new THREE.CylinderGeometry(1.3, 0.95, 3.2, 16), new THREE.MeshToonMaterial({ color: 0xD4A373 }));
+        decoCup.position.set(0, 2.6, -8.0);
+        backdropSceneryGroup.add(decoCup);
+      }
+    }
+
+    // 6. PROCEDURAL MASCOT CHIBI (LEFT SIDE)
+    const mascotGroup = new THREE.Group();
+    mascotGroup.position.set(-2.8, 0, 0);
+    mascotGroup.rotation.y = 0.55;
+
+    // Body
+    const mBodyGeo = new THREE.BoxGeometry(1.0, 1.1, 0.8);
+    const mBodyMat = new THREE.MeshToonMaterial({ color: 0xFFE600 });
+    const mBody = new THREE.Mesh(mBodyGeo, mBodyMat);
+    mBody.position.y = 1.0;
+    mascotGroup.add(mBody);
+
+    // Head
+    const mHeadGeo = new THREE.BoxGeometry(1.3, 1.2, 1.1);
+    const mHeadMat = new THREE.MeshToonMaterial({ color: 0x121212 });
+    const mHead = new THREE.Mesh(mHeadGeo, mHeadMat);
+    mHead.position.y = 2.15;
+    mascotGroup.add(mHead);
+
+    // Visor Face
+    const mFaceGeo = new THREE.PlaneGeometry(1.0, 0.7);
+    const mFaceMat = new THREE.MeshBasicMaterial({ color: 0x00F0FF });
+    const mFace = new THREE.Mesh(mFaceGeo, mFaceMat);
+    mFace.position.set(0, 2.15, 0.56);
+    mascotGroup.add(mFace);
+
+    // Eyes
+    const mEyeGeo = new THREE.BoxGeometry(0.15, 0.15, 0.05);
+    const mEyeMat = new THREE.MeshBasicMaterial({ color: 0x121212 });
+    const mLeftEye = new THREE.Mesh(mEyeGeo, mEyeMat);
+    mLeftEye.position.set(-0.25, 2.18, 0.58);
+    const mRightEye = new THREE.Mesh(mEyeGeo, mEyeMat);
+    mRightEye.position.set(0.25, 2.18, 0.58);
+    mascotGroup.add(mLeftEye);
+    mascotGroup.add(mRightEye);
+
+    // Mascot Ears (Cat / Fox / Bear / Tiger variations)
+    const earGroup = new THREE.Group();
+    const earGeo = new THREE.ConeGeometry(0.25, 0.5, 4);
+    const earMat = new THREE.MeshToonMaterial({ color: 0xFFE600 });
+    const leftEar = new THREE.Mesh(earGeo, earMat);
+    leftEar.position.set(-0.45, 2.9, 0);
+    leftEar.rotation.z = 0.25;
+    const rightEar = new THREE.Mesh(earGeo, earMat);
+    rightEar.position.set(0.45, 2.9, 0);
+    rightEar.rotation.z = -0.25;
+    earGroup.add(leftEar);
+    earGroup.add(rightEar);
+    mascotGroup.add(earGroup);
+
+    // Mascot Shield Aura
+    const mAuraGeo = new THREE.SphereGeometry(1.7, 16, 16);
+    const mAuraMat = new THREE.MeshBasicMaterial({ color: 0x00F0FF, wireframe: true, transparent: true, opacity: 0.4 });
+    const mAura = new THREE.Mesh(mAuraGeo, mAuraMat);
+    mAura.position.y = 1.6;
+    mAura.visible = false;
+    mascotGroup.add(mAura);
+
+    // Shadow
+    const mShadowGeo = new THREE.CircleGeometry(0.8, 16);
+    const mShadowMat = new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.4 });
+    const mShadow = new THREE.Mesh(mShadowGeo, mShadowMat);
+    mShadow.rotation.x = -Math.PI / 2;
+    mShadow.position.y = 0.02;
+    mascotGroup.add(mShadow);
+
+    scene.add(mascotGroup);
+
+    // 7. PROCEDURAL BOSS MONSTER (RIGHT SIDE)
+    const bossGroup = new THREE.Group();
+    bossGroup.position.set(2.8, 0, 0);
+    bossGroup.rotation.y = -0.55;
+
+    function buildBossModel(chapterId = 'chapter-1') {
+      while (bossGroup.children.length > 0) {
+        bossGroup.remove(bossGroup.children[0]);
+      }
+
+      if (chapterId === 'chapter-2') {
+        // Shopee Box Monster King
+        const box = new THREE.Mesh(new THREE.BoxGeometry(2.6, 2.2, 2.6), new THREE.MeshToonMaterial({ color: 0xF94E2F }));
+        box.position.y = 1.3;
+        bossGroup.add(box);
+        const tape = new THREE.Mesh(new THREE.BoxGeometry(2.66, 0.45, 2.66), new THREE.MeshToonMaterial({ color: 0xFDE047 }));
+        tape.position.y = 1.3;
+        bossGroup.add(tape);
+        const wingL = new THREE.Mesh(new THREE.BoxGeometry(1.1, 0.2, 0.7), new THREE.MeshToonMaterial({ color: 0xFFFFFF }));
+        wingL.position.set(-1.7, 1.5, 0);
+        const wingR = new THREE.Mesh(new THREE.BoxGeometry(1.1, 0.2, 0.7), new THREE.MeshToonMaterial({ color: 0xFFFFFF }));
+        wingR.position.set(1.7, 1.5, 0);
+        bossGroup.add(wingL);
+        bossGroup.add(wingR);
+        const eyeMat = new THREE.MeshBasicMaterial({ color: 0x121212 });
+        const eyeL = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.25, 0.2), eyeMat);
+        eyeL.position.set(-0.55, 1.5, 1.32);
+        const eyeR = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.25, 0.2), eyeMat);
+        eyeR.position.set(0.55, 1.5, 1.32);
+        bossGroup.add(eyeL);
+        bossGroup.add(eyeR);
+      } else if (chapterId === 'chapter-3') {
+        // FOMO Shadow Demon
+        const ghost = new THREE.Mesh(new THREE.ConeGeometry(1.6, 3.4, 16), new THREE.MeshToonMaterial({ color: 0x4C1D95 }));
+        ghost.rotation.x = Math.PI;
+        ghost.position.y = 1.9;
+        bossGroup.add(ghost);
+        const cardL = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.55, 0.05), new THREE.MeshToonMaterial({ color: 0xF59E0B }));
+        cardL.position.set(-1.0, 2.9, 0);
+        cardL.rotation.z = -0.4;
+        const cardR = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.55, 0.05), new THREE.MeshToonMaterial({ color: 0xF59E0B }));
+        cardR.position.set(1.0, 2.9, 0);
+        cardR.rotation.z = 0.4;
+        bossGroup.add(cardL);
+        bossGroup.add(cardR);
+        const eyeMat = new THREE.MeshBasicMaterial({ color: 0x00F0FF });
+        const eyeL = new THREE.Mesh(new THREE.SphereGeometry(0.28, 8, 8), eyeMat);
+        eyeL.position.set(-0.45, 2.3, 0.9);
+        const eyeR = new THREE.Mesh(new THREE.SphereGeometry(0.28, 8, 8), eyeMat);
+        eyeR.position.set(0.45, 2.3, 0.9);
+        bossGroup.add(eyeL);
+        bossGroup.add(eyeR);
+      } else {
+        // Boba Tea Monster Queen (Chapter 1)
+        const cup = new THREE.Mesh(new THREE.CylinderGeometry(1.5, 1.1, 3.0, 18), new THREE.MeshToonMaterial({ color: 0xD4A373 }));
+        cup.position.y = 1.5;
+        bossGroup.add(cup);
+        const straw = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.2, 1.9, 8), new THREE.MeshToonMaterial({ color: 0xEF4444 }));
+        straw.position.set(0.4, 3.2, 0);
+        straw.rotation.z = -0.3;
+        bossGroup.add(straw);
+        const eyeMat = new THREE.MeshBasicMaterial({ color: 0xEF4444 });
+        const eyeL = new THREE.Mesh(new THREE.SphereGeometry(0.28, 8, 8), eyeMat);
+        eyeL.position.set(-0.5, 1.9, 1.25);
+        const eyeR = new THREE.Mesh(new THREE.SphereGeometry(0.28, 8, 8), eyeMat);
+        eyeR.position.set(0.5, 1.9, 1.25);
+        bossGroup.add(eyeL);
+        bossGroup.add(eyeR);
+      }
+
+      // Boss Shadow
+      const bShadowGeo = new THREE.CircleGeometry(1.2, 16);
+      const bShadowMat = new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.4 });
+      const bShadow = new THREE.Mesh(bShadowGeo, bShadowMat);
+      bShadow.rotation.x = -Math.PI / 2;
+      bShadow.position.y = 0.02;
+      bossGroup.add(bShadow);
+    }
+
+    scene.add(bossGroup);
+    buildBossModel('chapter-1');
+
+    // 8. PROJECTILE & VFX PARTICLES
+    const projectileGroup = new THREE.Group();
+    const projGeo = new THREE.SphereGeometry(0.4, 8, 8);
+    const projMat = new THREE.MeshBasicMaterial({ color: 0x00F0FF });
+    const projectile = new THREE.Mesh(projGeo, projMat);
+    projectile.visible = false;
+    projectileGroup.add(projectile);
+    scene.add(projectileGroup);
+
+    // 9. ANIMATION LOOP & IDLE MOTIONS
+    let clock = 0;
+    let animPlayerAttack = false;
+    let animBossAttack = false;
+    let attackProgress = 0;
+
+    function animate() {
+      requestAnimationFrame(animate);
+      clock += 0.025;
+
+      // Idle Wobble for Mascot
+      if (!animPlayerAttack) {
+        mascotGroup.position.y = Math.sin(clock * 3) * 0.08;
+        mascotGroup.rotation.z = Math.sin(clock * 2) * 0.03;
+      }
+
+      // Idle Wobble for Boss
+      if (!animBossAttack) {
+        bossGroup.position.y = Math.sin(clock * 2.5 + 1) * 0.12;
+        bossGroup.rotation.z = Math.sin(clock * 1.8) * 0.04;
+      }
+
+      // Player Attack Animation (Lunge forward & retreat)
+      if (animPlayerAttack) {
+        attackProgress += 0.06;
+        if (attackProgress <= 0.5) {
+          mascotGroup.position.x = -2.8 + attackProgress * 3.5;
+        } else if (attackProgress <= 1.0) {
+          mascotGroup.position.x = -2.8 + (1.0 - attackProgress) * 3.5;
+        } else {
+          animPlayerAttack = false;
+          mascotGroup.position.x = -2.8;
+        }
+      }
+
+      // Boss Attack Animation (Lunge forward & retreat)
+      if (animBossAttack) {
+        attackProgress += 0.06;
+        if (attackProgress <= 0.5) {
+          bossGroup.position.x = 2.8 - attackProgress * 3.5;
+        } else if (attackProgress <= 1.0) {
+          bossGroup.position.x = 2.8 - (1.0 - attackProgress) * 3.5;
+        } else {
+          animBossAttack = false;
+          bossGroup.position.x = 2.8;
+        }
+      }
+
+      renderer.render(scene, camera);
+    }
+    requestAnimationFrame(animate);
+
+    // 10. BATTLE LOGIC ENGINE
+    function updateHUD() {
+      // Player HP & Shield
+      const pPercent = Math.max(0, (state.playerHp / state.playerMaxHp) * 100);
+      document.getElementById('player-hp-bar').style.width = pPercent + '%';
+      document.getElementById('player-hp-text').innerText = state.playerHp + ' / ' + state.playerMaxHp + ' HP';
+      const shieldBadge = document.getElementById('player-shield-badge');
+      if (state.playerShield > 0) {
+        shieldBadge.style.display = 'inline-block';
+        shieldBadge.innerText = '🛡️ KHIÊN: ' + state.playerShield;
+        mAura.visible = true;
+      } else {
+        shieldBadge.style.display = 'none';
+        mAura.visible = false;
+      }
+
+      // Boss HP & Stun
+      const bPercent = Math.max(0, (state.bossHp / state.bossMaxHp) * 100);
+      document.getElementById('boss-hp-bar').style.width = bPercent + '%';
+      document.getElementById('boss-hp-text').innerText = state.bossHp + ' / ' + state.bossMaxHp + ' HP';
+      const stunBadge = document.getElementById('boss-stun-badge');
+      stunBadge.style.display = state.bossStunned ? 'inline-block' : 'none';
+
+      // Round indicator
+      const roundEl = document.getElementById('round-indicator');
+      if (state.isPlayerTurn) {
+        roundEl.innerText = 'HIỆP ' + state.round + ' - LƯỢT CỦA BẠN';
+        roundEl.style.background = '#FFE600';
+      } else {
+        roundEl.innerText = 'HIỆP ' + state.round + ' - LƯỢT CỦA BOSS';
+        roundEl.style.background = '#FF5C5C';
+      }
+
+      // Deck buttons state
+      const buttons = document.querySelectorAll('.skill-card-btn');
+      buttons.forEach(btn => {
+        btn.disabled = !state.isPlayerTurn || state.isActing || state.isBattleOver;
+      });
+    }
+
+    function showToast(msg) {
+      const toast = document.getElementById('battle-toast');
+      toast.innerText = msg;
+      toast.classList.add('visible');
+      setTimeout(() => { toast.classList.remove('visible'); }, 2200);
+    }
+
+    function triggerFlash() {
+      const fl = document.getElementById('flash-overlay');
+      fl.style.opacity = '0.85';
+      setTimeout(() => { fl.style.opacity = '0'; }, 300);
+    }
+
+    function shakeCamera() {
+      const origX = camera.position.x;
+      let count = 0;
+      const interval = setInterval(() => {
+        camera.position.x = origX + (Math.random() - 0.5) * 0.4;
+        count++;
+        if (count > 6) {
+          clearInterval(interval);
+          camera.position.x = origX;
+        }
+      }, 35);
+    }
+
+    // Player Executes Skill
+    function executePlayerSkill(skillId) {
+      if (!state.isPlayerTurn || state.isActing || state.isBattleOver) return;
+      const skill = SKILLS_REGISTRY[skillId];
+      if (!skill) return;
+
+      audio.init();
+      state.isActing = true;
+      animPlayerAttack = true;
+      attackProgress = 0;
+      audio.playAttack();
+
+      // Check weakness counter (x2 damage if correct chapter)
+      const isWeakness = (skill.weaknessChapterId === state.chapterId);
+      let damage = skill.damage;
+      if (isWeakness) {
+        damage = damage * 2;
+        document.getElementById('critical-banner').style.display = 'block';
+        audio.playCrit();
+        triggerFlash();
+        shakeCamera();
+      } else {
+        document.getElementById('critical-banner').style.display = 'none';
+      }
+
+      // Add Shield
+      if (skill.defense > 0) {
+        state.playerShield += skill.defense;
+        audio.playShield();
+      }
+
+      // Heal
+      if (skill.heal && skill.heal > 0) {
+        state.playerHp = Math.min(state.playerMaxHp, state.playerHp + skill.heal);
+      }
+
+      // Stun
+      if (skill.stun) {
+        state.bossStunned = true;
+      }
+
+      // Apply Damage to Boss
+      state.bossHp = Math.max(0, state.bossHp - damage);
+      state.totalDamageDealt += damage;
+      updateHUD();
+
+      showToast('⚔️ Bạn tung ' + skill.name + ' gây -' + damage + ' HP!');
+
+      postToParent('BATTLE_ACTION', {
+        actor: 'player',
+        skillId: skillId,
+        damageDealt: damage,
+        isCritical: isWeakness,
+        bossHpLeft: state.bossHp,
+        playerHpLeft: state.playerHp
+      });
+
+      setTimeout(() => {
+        document.getElementById('critical-banner').style.display = 'none';
+
+        // Check Victory
+        if (state.bossHp <= 0) {
+          triggerVictory();
+          return;
+        }
+
+        // Switch to Boss Turn
+        state.isPlayerTurn = false;
+        state.isActing = false;
+        updateHUD();
+
+        setTimeout(executeBossTurn, 900);
+      }, 1000);
+    }
+
+    // Boss Executes Turn
+    function executeBossTurn() {
+      if (state.isBattleOver) return;
+
+      // If Boss Stunned
+      if (state.bossStunned) {
+        state.bossStunned = false;
+        showToast('❄️ Boss bị đóng băng/choáng! Bỏ qua hiệp tấn công!');
+        updateHUD();
+        setTimeout(endRound, 1000);
+        return;
+      }
+
+      state.isActing = true;
+      animBossAttack = true;
+      attackProgress = 0;
+      audio.playBossHit();
+
+      let bossDmg = state.bossAttack || 20;
+
+      // Absorb damage by Shield first
+      if (state.playerShield > 0) {
+        if (state.playerShield >= bossDmg) {
+          state.playerShield -= bossDmg;
+          bossDmg = 0;
+          showToast('🛡️ Khiên đã chặn hoàn toàn đòn đánh của Boss!');
+        } else {
+          bossDmg -= state.playerShield;
+          state.playerShield = 0;
+          showToast('🛡️ Khiên bị vỡ! Bạn nhận -' + bossDmg + ' HP!');
+        }
+      } else {
+        showToast('👹 Boss tung chiêu cám dỗ! Bạn mất -' + bossDmg + ' HP!');
+      }
+
+      state.playerHp = Math.max(0, state.playerHp - bossDmg);
+      updateHUD();
+      shakeCamera();
+
+      postToParent('BATTLE_ACTION', {
+        actor: 'boss',
+        damageDealt: bossDmg,
+        bossHpLeft: state.bossHp,
+        playerHpLeft: state.playerHp
+      });
+
+      setTimeout(() => {
+        state.isActing = false;
+
+        // Check Defeat
+        if (state.playerHp <= 0) {
+          triggerDefeat();
+          return;
+        }
+
+        endRound();
+      }, 1000);
+    }
+
+    function endRound() {
+      state.round++;
+      state.isPlayerTurn = true;
+      updateHUD();
+    }
+
+    function triggerVictory() {
+      state.isBattleOver = true;
+      audio.playVictory();
+      triggerFlash();
+
+      document.getElementById('res-turns').innerText = state.round + ' Hiệp';
+      document.getElementById('res-damage-dealt').innerText = state.totalDamageDealt + ' HP';
+      document.getElementById('victory-modal').style.display = 'flex';
+
+      postToParent('BATTLE_END', {
+        result: 'victory',
+        turnsTaken: state.round,
+        damageDealtTotal: state.totalDamageDealt,
+        bossHpRemaining: 0,
+        playerHpRemaining: state.playerHp
+      });
+    }
+
+    function triggerDefeat() {
+      state.isBattleOver = true;
+      audio.playDefeat();
+
+      document.getElementById('res-boss-hp-left').innerText = state.bossHp + ' HP';
+      document.getElementById('res-defeat-damage').innerText = state.totalDamageDealt + ' HP';
+      document.getElementById('defeat-modal').style.display = 'flex';
+
+      postToParent('BATTLE_END', {
+        result: 'defeat',
+        turnsTaken: state.round,
+        damageDealtTotal: state.totalDamageDealt,
+        bossHpRemaining: state.bossHp,
+        playerHpRemaining: 0
+      });
+    }
+
+    // 11. DECK UI RENDERER
+    function renderDeckUI() {
+      const grid = document.getElementById('deck-grid');
+      grid.innerHTML = '';
+
+      state.equippedSkills.forEach(skillId => {
+        const skill = SKILLS_REGISTRY[skillId];
+        if (!skill) return;
+
+        const btn = document.createElement('button');
+        btn.className = 'skill-card-btn';
+        btn.id = 'btn-skill-' + skillId;
+        btn.onclick = () => executePlayerSkill(skillId);
+
+        const isWeakness = (skill.weaknessChapterId === state.chapterId);
+        let tagHtml = '';
+        if (isWeakness) {
+          tagHtml = '<span class="weakness-tag">💥 X2 DMG</span>';
+        }
+
+        btn.innerHTML = `
+          ${tagHtml}
+          <div class="card-icon">${skill.icon}</div>
+          <div class="card-name">${skill.name}</div>
+          <div class="card-dmg-badge">${skill.tag || (skill.damage + ' DMG')}</div>
+        `;
+        grid.appendChild(btn);
+      });
+      updateHUD();
+    }
+
+    // 12. INITIALIZATION & RECONFIG
+    function applyBattleConfig(config = {}) {
+      if (config.chapterId) state.chapterId = config.chapterId;
+      if (config.avatarId) {
+        state.avatarId = config.avatarId;
+        if (state.avatarId === 'fox') {
+          mBodyMat.color.setHex(0xF97316);
+          leftEar.scale.set(1.2, 1.5, 1.2);
+          rightEar.scale.set(1.2, 1.5, 1.2);
+          document.getElementById('player-name').innerText = '🦊 Cáo Thông Thái';
+        } else if (state.avatarId === 'bear') {
+          mBodyMat.color.setHex(0x92400E);
+          document.getElementById('player-name').innerText = '🐻 Gấu Kỷ Luật';
+        } else if (state.avatarId === 'tiger') {
+          mBodyMat.color.setHex(0xEA580C);
+          document.getElementById('player-name').innerText = '🐯 Hổ Chiến Thần';
+        } else {
+          mBodyMat.color.setHex(0xFFE600);
+          document.getElementById('player-name').innerText = '🐱 Mèo Chiêu Tài';
+        }
+      }
+
+      if (config.bossHp) {
+        state.bossMaxHp = config.bossHp;
+        state.bossHp = config.bossHp;
+      }
+      if (config.bossAttack) state.bossAttack = config.bossAttack;
+      if (config.bossName) {
+        state.bossName = config.bossName;
+        document.getElementById('boss-name').innerText = (config.bossIcon || '👹') + ' ' + config.bossName;
+      }
+      if (config.equippedSkills && Array.isArray(config.equippedSkills) && config.equippedSkills.length > 0) {
+        state.equippedSkills = config.equippedSkills;
+      }
+
+      // Reset Combat State
+      state.round = 1;
+      state.isPlayerTurn = true;
+      state.isActing = false;
+      state.isBattleOver = false;
+      state.playerHp = state.playerMaxHp;
+      state.playerShield = 0;
+      state.bossStunned = false;
+      state.totalDamageDealt = 0;
+
+      document.getElementById('victory-modal').style.display = 'none';
+      document.getElementById('defeat-modal').style.display = 'none';
+
+      buildBossModel(state.chapterId);
+      updateArenaScenery(state.chapterId);
+      renderDeckUI();
+      updateHUD();
+    }
+
+    // Modal buttons
+    document.getElementById('btn-victory-claim').addEventListener('click', () => {
+      postToParent('BATTLE_EXIT', { reason: 'victory_claimed' });
+    });
+    document.getElementById('btn-defeat-retry').addEventListener('click', () => {
+      postToParent('BATTLE_EXIT', { reason: 'defeat_retry' });
+    });
+
+    // 13. POST MESSAGE BRIDGE (REACT NATIVE & WEB)
+    function postToParent(type, payload = {}) {
+      const message = JSON.stringify({ type, ...payload });
+      if (window.ReactNativeWebView && window.ReactNativeWebView.postMessage) {
+        window.ReactNativeWebView.postMessage(message);
+      } else if (window.parent && window.parent.postMessage) {
+        window.parent.postMessage(message, '*');
+      }
+    }
+
+    window.addEventListener('message', (event) => {
+      try {
+        const data = typeof event.data === 'string' ? JSON.parse(event.data) : event.data;
+        if (data.type === 'START_BATTLE') {
+          audio.init();
+          applyBattleConfig(data);
+        }
+      } catch (err) {}
+    });
+
+    window.addEventListener('resize', () => {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+
+    // Default setup
+    applyBattleConfig({
+      chapterId: 'chapter-1',
+      avatarId: 'cat',
+      bossHp: 100,
+      bossAttack: 18,
+      bossName: 'Quái Trà Sữa',
+      bossIcon: '🧋',
+      equippedSkills: ['water_splash', 'cold_tumbler', 'freeze_delay']
+    });
+
+    postToParent('BATTLE_LOADED', { version: '2.0', status: 'ready' });
+  </script>
+</body>
+</html>

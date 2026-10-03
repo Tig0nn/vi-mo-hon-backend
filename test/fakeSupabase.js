@@ -72,6 +72,7 @@ const createFakeSupabaseClient = () => {
     bossProgress: new Map(),
     financialLessons: new Map(lessonRows.map((lesson) => [lesson.id, lesson])),
     userLessonProgress: new Map(),
+    gameSessions: [],
     challenges: new Map(challengeRows.map(([id, title, sequence_order, discipline_reward]) => [id, {
       id, title, description: title, reward_xp: 30, hp_damage: 20, discipline_reward,
       difficulty: 'easy', linked_boss_id: 'bubble-tea-monster', is_active: true, sequence_order,
@@ -84,7 +85,7 @@ const createFakeSupabaseClient = () => {
   const key = (userId, id) => `${userId}:${id}`;
   const ensureGameState = (userId) => {
     if (!state.profiles.has(userId)) return 'profile_not_found';
-    if (!state.userProgress.has(userId)) state.userProgress.set(userId, { user_id: userId, xp: 0, level: 1, discipline: 0, savings: 0, knowledge: 0, wealth: 0 });
+    if (!state.userProgress.has(userId)) state.userProgress.set(userId, { user_id: userId, xp: 0, level: 1, discipline: 0, savings: 0, knowledge: 0, wealth: 0, streak: 1, current_streak: 1, freeze_streak_left: 0 });
     if (!state.bossProgress.has(key(userId, 'bubble-tea-monster'))) state.bossProgress.set(key(userId, 'bubble-tea-monster'), { user_id: userId, boss_id: 'bubble-tea-monster', current_hp: 100, status: 'active', started_at: now(), updated_at: now() });
     const active = [...state.userChallenges.values()].find((row) => row.user_id === userId && row.status === 'active');
     const completedToday = [...state.userChallenges.values()].some((row) => row.user_id === userId && row.status === 'completed' && row.completed_date === state.businessDate);
@@ -113,6 +114,12 @@ const createFakeSupabaseClient = () => {
       rows = [...state.bossProgress.values()]
         .filter((row) => (!filter.user_id || row.user_id === filter.user_id) && (!filter.boss_id || row.boss_id === filter.boss_id) && (!filter.status || row.status === filter.status))
         .map((row) => ({ ...row, bosses: state.bosses.get(row.boss_id) }));
+    } else if (table === 'game_sessions') {
+      rows = state.gameSessions.filter((row) => Object.entries(filter).every(([field, value]) => {
+        if (field === 'created_at_gte') return row.created_at >= value;
+        if (field === 'created_at_lt') return row.created_at < value;
+        return row[field] === value;
+      }));
     } else if (table === 'challenges') {
       rows = [...state.challenges.values()].filter((row) => Object.entries(filter).every(([field, value]) => row[field] === value));
     } else if (table === 'financial_lessons') {
@@ -120,6 +127,12 @@ const createFakeSupabaseClient = () => {
         Object.entries(filter).every(([field, value]) => row[field] === value));
     } else if (table === 'user_lesson_progress') {
       rows = [...state.userLessonProgress.values()].filter((row) =>
+        Object.entries(filter).every(([field, value]) => row[field] === value));
+    } else if (table === 'profiles') {
+      rows = [...state.profiles.values()].filter((row) =>
+        Object.entries(filter).every(([field, value]) => row[field] === value));
+    } else if (table === 'user_progress') {
+      rows = [...state.userProgress.values()].filter((row) =>
         Object.entries(filter).every(([field, value]) => row[field] === value));
     }
     for (const order of orders.slice().reverse()) rows.sort((a, b) => {
@@ -144,6 +157,16 @@ const createFakeSupabaseClient = () => {
       range(from, to) { this.rangeValue = { from, to }; return Promise.resolve(selectRows(table, this.filter, this.orders, this.rangeValue)); },
       upsert(payload) { this.operation = 'upsert'; this.payload = payload; return this; },
       update(payload) { this.operation = 'update'; this.payload = payload; return this; },
+      insert(payload) {
+        this.operation = 'insert';
+        this.payload = payload;
+        if (table === 'game_sessions') {
+          const session = { id: `session-${state.gameSessions.length + 1}`, created_at: now(), ...this.payload };
+          state.gameSessions.push(session);
+          return Promise.resolve({ data: [clone(session)], error: null });
+        }
+        return this;
+      },
       async single() {
         if (table !== 'profiles' || this.operation !== 'upsert') return { data: null, error: null };
         const existing = state.profiles.get(this.payload.user_id); const timestamp = now();
@@ -166,6 +189,25 @@ const createFakeSupabaseClient = () => {
         try {
           if (table === 'user_progress' && this.operation === 'upsert') {
             if (!state.userProgress.has(this.payload.user_id)) state.userProgress.set(this.payload.user_id, clone(this.payload));
+            return Promise.resolve({ data: null, error: null }).then(resolve, reject);
+          }
+          if (table === 'user_boss_progress' && this.operation === 'update') {
+            for (const [, bossProg] of state.bossProgress.entries()) {
+              if ((!this.filter.user_id || bossProg.user_id === this.filter.user_id) &&
+                  (!this.filter.boss_id || bossProg.boss_id === this.filter.boss_id)) {
+                Object.assign(bossProg, this.payload);
+              }
+            }
+            return Promise.resolve({ data: null, error: null }).then(resolve, reject);
+          }
+          if (table === 'profiles' && this.operation === 'update') {
+            const prof = state.profiles.get(this.filter.user_id);
+            if (prof) Object.assign(prof, this.payload);
+            return Promise.resolve({ data: null, error: null }).then(resolve, reject);
+          }
+          if (table === 'user_progress' && this.operation === 'update') {
+            const userProg = state.userProgress.get(this.filter.user_id);
+            if (userProg) Object.assign(userProg, this.payload);
             return Promise.resolve({ data: null, error: null }).then(resolve, reject);
           }
           return Promise.resolve(selectRows(table, this.filter, this.orders, this.rangeValue)).then(resolve, reject);

@@ -52,8 +52,48 @@ const updateProfile = async (req, res, next) => {
   }
 };
 
+const upgradePremium = async (req, res, next) => {
+  const result = userIdSchema.safeParse(req.body.userId);
+  if (!result.success) {
+    return sendError(res, 'Validation failed', 400, formatZodErrors(result.error));
+  }
+
+  try {
+    const updated = await profileService.upgradeToPremium(result.data);
+    return sendSuccess(
+      res,
+      updated,
+      'Nâng cấp gói Premium 29.000đ/tháng thành công!',
+      200
+    );
+  } catch (error) {
+    return next(error);
+  }
+};
+
+const freezeStreak = async (req, res, next) => {
+  const result = userIdSchema.safeParse(req.body.userId);
+  if (!result.success) {
+    return sendError(res, 'Validation failed', 400, formatZodErrors(result.error));
+  }
+
+  try {
+    const resultData = await profileService.useFreezeStreak(result.data);
+    return sendSuccess(
+      res,
+      resultData,
+      'Đóng băng streak thành công! Chuỗi ngày của bạn đã được bảo vệ an toàn.',
+      200
+    );
+  } catch (error) {
+    return next(error);
+  }
+};
+
 module.exports = {
   createProfile,
+  freezeStreak,
   getProfile,
   updateProfile,
+  upgradePremium,
 };
